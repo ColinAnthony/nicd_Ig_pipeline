@@ -8,17 +8,21 @@
          ig_pipeline.py -v
 
     Options:
-         -p --path         The path to the project folder, where the folders will be created
-         -s --settings     The path and file name of the settings csv file
-         -r --run_step
-         -v --version      Show the script version number
-         -h --help         Show this screen.
+         -p --path          The path to the project folder, where the folders will be created
+         -s --settings      The path and file name of the settings csv file
+         -r --run_step      The step to re-run the pipeline from
+                                1 = rerun processing raw data
+                                2 = rerun sonar1
+                                3 = rerun sonar2
+                                4 = stats
+         -v --version       Show the script version number
+         -h --help          Show this screen.
 """
 import sys
+import os
 from docopt import docopt
 import pandas as pd
 import pathlib
-import shutil
 import subprocess
 
 
@@ -50,22 +54,30 @@ def settings_checker(settings_dataframe):
     run_steps = []
     for job_entry, job_settings in settings_dict.items():
         sample_id = job_settings["sample_name"]
-        try:
-            parts = sample_id.split("_")
-            if len(parts) != 5:
-                print(f"your sample name was {sample_id}\n")
-                sys.exit()
-            elif parts[0][:3].upper() == "CAP" and len(parts[0]) != 6:
-                print(f"your sample name was {sample_id}\n The PID must be zero padded: eg: CAP008, not CAP8" )
-                sys.exit()
-            elif parts[0][:3].upper() == "CAP" and len(parts[1]) != 4:
-                print(f"your sample name was {sample_id}\n The visit code must be in the 2000 format, not P2V0" )
-                sys.exit()
-            elif parts[0][:3].upper() == "CAP" and len(parts[2]) != 6 and parts[2][-3:].lower() != "wpi":
-                print(f"your sample name was {sample_id}\n The wpi code must be zero padded and end in wpi eg: 080wpi" )
-                sys.exit()
-
-        except:
+        parts = sample_id.split("_")
+        if len(parts) != 5:
+            print(f"your sample name was {sample_id}\n")
+            print("Sample name was not correctly formatted\n"
+                  "Use '_' as the field delimeter\n"
+                  "Sample name must be: pid_visit_wpi_chain_primername\n"
+                  "eg: CAP255_4180_80wpi_heavy_C5")
+            sys.exit("exiting")
+        elif parts[0][:3].upper() == "CAP" and len(parts[0]) != 6:
+            print(f"your sample name was {sample_id}\n The PID must be zero padded: eg: CAP008, not CAP8")
+            print("Sample name was not correctly formatted\n"
+                  "Use '_' as the field delimeter\n"
+                  "Sample name must be: pid_visit_wpi_chain_primername\n"
+                  "eg: CAP255_4180_80wpi_heavy_C5")
+            sys.exit("exiting")
+        elif parts[0][:3].upper() == "CAP" and len(parts[1]) != 4:
+            print(f"your sample name was {sample_id}\n The visit code must be in the 2000 format, not P2V0")
+            print("Sample name was not correctly formatted\n"
+                  "Use '_' as the field delimeter\n"
+                  "Sample name must be: pid_visit_wpi_chain_primername\n"
+                  "eg: CAP255_4180_80wpi_heavy_C5")
+            sys.exit("exiting")
+        elif parts[0][:3].upper() == "CAP" and len(parts[2]) != 6 and parts[2][-3:].lower() != "wpi":
+            print(f"your sample name was {sample_id}\n The wpi code must be zero padded and end in wpi eg: 080wpi")
             print("Sample name was not correctly formatted\n"
                   "Use '_' as the field delimeter\n"
                   "Sample name must be: pid_visit_wpi_chain_primername\n"
@@ -124,15 +136,57 @@ def step_0_make_folders(path, lineage, time_point, chain, primer_name):
     pathlib.Path(path, lineage, time_point, chain, "4_dereplicated", "work").mkdir(mode=0o777, parents=True,
                                                                                    exist_ok=True)
     pathlib.Path(path, lineage, time_point, chain, "4_dereplicated", "output").mkdir(mode=0o777, parents=True,
-                                                                                   exist_ok=True)
+                                                                                     exist_ok=True)
     pathlib.Path(path, lineage, time_point, chain, primer_name, "crdh3", "work").mkdir(mode=0o777, parents=True,
-                                                                               exist_ok=True)
+                                                                                       exist_ok=True)
     pathlib.Path(path, lineage, time_point, chain, primer_name, "crdh3", "output").mkdir(mode=0o777, parents=True,
-                                                                               exist_ok=True)
+                                                                                         exist_ok=True)
     pathlib.Path(path, lineage, time_point, chain, primer_name, "full_ab", "work").mkdir(mode=0o777, parents=True,
-                                                                                 exist_ok=True)
+                                                                                         exist_ok=True)
     pathlib.Path(path, lineage, time_point, chain, primer_name, "full_ab", "output").mkdir(mode=0o777, parents=True,
-                                                                                 exist_ok=True)
+                                                                                           exist_ok=True)
+
+
+def unzip_files(path):
+    """
+    a function to upzip any .gz or .zip compressed files
+    :param path: the path to the 0_new_data folder
+    :return:
+    """
+    search = pathlib.Path(path, "0_new_data").glob("*")
+
+    for file in search:
+
+        print(file)
+        # do a '-' t0 '_' rename
+        # cmd = f"rename -v '-' '_' {file}"
+        cmd = f"rename 's/-/_/g' {file}"
+        subprocess.call(cmd, shell=True)
+
+        # uncompress the files
+        suffix = file.suffix
+        print(suffix)
+        if suffix == ".zip":
+            cmd = f"unzip -o -d ./ {file}"
+            subprocess.call(cmd, shell=True)
+            unzipped = str(file).replace(".zip", "")
+
+            # remove the .zip file after unzipping
+            if os.path.isfile(unzipped):
+                cmd = f"rm {file}"
+                subprocess.call(cmd, shell=True)
+            else:
+                print(f"unzipping of {file} failed")
+
+        elif suffix == ".gz":
+            cmd = f"gunzip {file}"
+            subprocess.call(cmd, shell=True)
+
+        elif suffix == ".fastq":
+            print("the file is already unziped")
+
+        else:
+            print(f"unknown file ending for {file}\nExpected .fastq, .zip or .gz")
 
 
 def move_raw_data(path, settings_dataframe):
@@ -142,72 +196,151 @@ def move_raw_data(path, settings_dataframe):
     :param settings_dataframe: the dataframe object form the settings file
     :return: a list of all the files that were moved
     """
-    raw_files = pathlib.Path(path, "0_new_data").glob("*R1*.fastq*")
-    all_destinations = []
-    if raw_files is not None:
-        for fileR1 in raw_files:
-            name = fileR1.stem
+    raw_files = pathlib.Path(path, "0_new_data").glob("*.fastq")
+    n = 0
+    # rename raw files
+    for n, file in enumerate(raw_files):
+        new_name = str(file).replace("-", "_")
+        os.rename(str(file), new_name)
 
-            name = "_".join(name.split("_")[:5]).strip()
-            print(name)
+    # find where to move each raw file and move it to the right folder
+    raw_files = pathlib.Path(path, "0_new_data").glob("*.fastq")
+    for n, file in enumerate(raw_files):
+        full_name = file
+        name = file.stem
+        parts = name.split("_")
+        search_name = "_".join(parts[:5])
+        copy_name = "_".join(parts[:5]) + f"_{parts[7]}.fastq"
+        fields = settings_dataframe.loc[settings_dataframe['sample_name'] == search_name].head(1)
+        if fields.empty:
+            print(f"Your sample name {search_name}\nwas not found in the settings 'sample_name' column\n"
+                  f"Please fix the file name or settings file accordingly")
+            sys.exit("exiting")
 
-            file_extensions = fileR1.suffixes
-            file_ending = ''
-            for end in file_extensions:
-                file_ending = file_ending + end
+        lineage = fields.iloc[0]["lineage"].lower()
+        chain = fields.iloc[0]["sonar_1_version"].lower()
+        time_point = fields.iloc[0]["time_point"].lower()
+        destination = pathlib.Path(path, lineage, time_point, chain, "1_raw_data", copy_name)
 
-            fields = settings_dataframe.loc[settings_dataframe['sample_name'] == name].head(1)
+        # copy the file to the correct folder
+        if pathlib.Path(destination).is_file():
+            print(f"The file \n{full_name}\nis already in destination folder")
+            check = True
+            while check:
+                answer = input(f"Type: 'yes' to overwrite the existing file in the destination folder'\n"
+                               f"Type: 'no' to remove the file from 0new_data: ").lower()
+                if answer not in ["yes", "no"]:
+                    print("\nResponse was not a valid answer, enter 'yes', or 'no'\n")
+                    pass
+                elif answer == "yes":
+                    cmd1 = f"mv {full_name} {destination}"
+                    subprocess.call(cmd1, shell=True)
+                    check = False
+                else:
+                    check = False
+                    os.unlink(str(full_name))
 
-            lineage = fields.iloc[0]["lineage"].lower()
-            chain = fields.iloc[0]["sonar_1_version"].lower()
-            time_point = fields.iloc[0]["time_point"].lower()
-            destination_R1 = pathlib.Path(path, lineage, time_point, chain, name + "_R1_" + file_ending)
-            print(destination_R1)
-            all_destinations.append(destination_R1)
-            if pathlib.Path(destination_R1).is_file():
-                print("already exists")
-            else:
-                shutil.move(str(fileR1), str(destination_R1))
-                fileR2 = str(fileR1).replace("_R1_", "_R2_")
-                destination_R2 = str(destination_R1).replace("_R1_", "_R2_")
-                all_destinations.append(destination_R2)
-                shutil.move(str(fileR2), str(destination_R2))
+        else:
+            print("moving file")
+            print(full_name, "\n")
 
-    return sorted(all_destinations)
-
-
-def unzip_files(all_destinations):
-    for file in all_destinations:
-        suffix = file.suffixe
-        if suffix == "zip":
-            cmd = f"unzip {file}"
+            cmd = f"mv {full_name} {destination}"
             subprocess.call(cmd, shell=True)
-        elif suffix == "gz":
-            cmd = f"gunzip {file}"
-            subprocess.call(cmd, shell=True)
-        elif suffix == "fastq":
-            print("the file is already unziped")
+    if n == 0:
+        print("No fastq (fastq.gz/fastq.zip) files in 0new_data\n")
 
 
-def step_1_run_sample_processing():
+def step_1_run_sample_processing(command_call_processing):
+    for item in command_call_processing:
+        sample_name = item[0]
+        dir_with_raw_files = item[1]
+        sonar_version = item[2]
+        primer_name = item[3]
+        known_mab_name = item[4]
 
-    pass
+        # check if file is zipped, unzip if needed
+
+        # run pear
+
+        # compress 1_raw_data
+
+        # check if pear output is zipped, unzip if needed
+
+        # convert to fasta
+
+        # compress pear
+
+        # check if fasta files are zipped , unzip if needed
+        # concatenate multiple files
+
+        # zip fasta files
+
+        files_to_cat = dir_with_raw_files.glob("*.fasta")
+        cat_file = sample_name + '_concatenated.fastq'
+        for file in files_to_cat:
+            concat_cmd = f"cat {file} {cat_file}"
+
+        # dereplicate sequences using vsearch
+        derep_file = ''
+        dereplicate_cmd = f"vsearch dereplicate {cat_file} {derep_file}"
+
+        # rename to sample_name_unique.fasta
+        out_name = derep_file.replace(".fasta", "_unique.fasta")
+        rename_cmd = f"rename -v {derep_file} {out_name}"
+        subprocess.call(rename_cmd, shell=True)
 
 
-def step_2_run_sonar_1():
-    pass
+def step_2_run_sonar_1(command_call_sonar_1):
+    for item in command_call_sonar_1:
+        sample_name = item[0]
+        dir_with_sonar1_files = item[1]
+        sonar_version = item[2]
+        primer_name = item[3]
+        known_mab_name = item[4]
+
+        # check that only one file in target dir
+
+        job_name = ''
+
+        if sonar_version == "heavy":
+            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar-P1-H.sh"
+        elif sonar_version == "kappa":
+            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar_light.sh"
+        elif sonar_version == "lambda":
+            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar_P1-kappa.sh"
+
+        # tar.gz output
 
 
-def step_3_run_sonar_2():
-    pass
+def step_3_run_sonar_2(command_call_sonar_2):
+    for item in command_call_sonar_2:
+        sample_name = item[0]
+        dir_with_sonar2_files = item[1]
+        sonar_version = item[2]
+        primer_name = item[3]
+        known_mab_name = item[4]
+
+        # check that target dirs are empty
+
+        # check that there is enough disk space, send warning if not
+
+        # copy files to desired directory
+
+        # unzip files
+
+        # run sonar2
 
 
-def main(path, settings):
+def main(path, settings, rerun_step=1):
     """
     create folder structure for a sequencing project
-    :param your_path: (str) path to where the folders should be made
+    :param path: (str) path to where the folders should be made
     :param settings: (str) the path and csv file with the run settings
+    :param rerun_step: (int) the step to rerun the pipeline from
     """
+    if rerun_step not in [1,2,3]:
+        print("incorrect run step specified\nOptions are 1, 2 or 3\n see 'ig_pipeline.py --help' for details")
+        sys.exit("exiting")
 
     get_script_path = pathlib.Path(__file__)
     get_script_path = get_script_path.absolute()
@@ -221,56 +354,101 @@ def main(path, settings):
     # check that settings file has the correct headings
     settings_dict = settings_checker(settings_dataframe)
 
+    # make a list of the jobs to run and the settings required and make the required folders
+    list_jobs_to_run = []
     for job_entry, job_settings in settings_dict.items():
         sample_id = job_settings["sample_name"].upper()
-        lineage = job_settings["lineage"].lower()
-        time_point = job_settings["time_point"].lower()
-        chain = job_settings["sonar_1_version"].lower()
-        primer_name = job_settings["primer_name"].upper()
         known_mab_name = job_settings["known_mab_name"].upper()
-
         run_step1 = job_settings["run_step1"]
         run_step2 = job_settings["run_step2"]
         run_step3 = job_settings["run_step3"]
 
+        lineage = job_settings["lineage"].lower()
+        time_point = job_settings["time_point"].lower()
+        chain = job_settings["sonar_1_version"].lower()
+        primer_name = job_settings["primer_name"].upper()
+
+        list_jobs_to_run.append([[sample_id], [lineage, time_point, chain], [run_step1, run_step2, run_step3],
+                                 [primer_name], [known_mab_name]])
+
         # make the folders if they don't already exist
         step_0_make_folders(path, lineage, time_point, chain, primer_name)
 
-        # move files from 0_new_data, into correct directory, if necessary
-        all_destinations = move_raw_data(path, settings_dataframe)
-        print(all_destinations)
-        # unzip_files(all_destinations)
+    # unzip_files(dir_with_files)
+    unzip_files(path)
 
-        step_1_run_sample_processing()
+    # move files from 0_new_data, into correct directory, if necessary
+    move_raw_data(path, settings_dataframe)
 
+    command_call_processing = []
+    command_call_sonar_1 = []
+    command_call_sonar_2 = []
 
-        step_2_run_sonar_1()
+    n = 0
+    for job_entry in list_jobs_to_run:
+        sample_name = job_entry[0]
+        dir_with_raw_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "1_raw_data")
+        dir_with_sonar1_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "4_dereplicated")
+        dir_with_sonar2_files = dir_with_sonar1_files
 
+        chain = job_entry[1][2]
+        primer_name = job_entry[3]
+        known_mab_name = job_entry[4]
+        run_steps = job_entry[2]
+        if 1 in run_steps:
+            for i, step in enumerate(run_steps):
+                if step == 1:
+                    if i == 0:
+                        command_call_processing.append([sample_name, dir_with_raw_files, chain, primer_name,
+                                                        known_mab_name])
+                    elif i == 1:
+                        command_call_sonar_1.append([sample_name, dir_with_sonar1_files, chain, primer_name,
+                                                     known_mab_name])
+                    elif i == 2:
+                        command_call_sonar_2.append([sample_name, dir_with_sonar2_files, chain, primer_name,
+                                                     known_mab_name])
+                    else:
+                        print("this should not happen\nnumber or run steps larger than expected\n")
+                        sys.exit("exiting")
 
+            print("jobs to run here")
+        else:
+            continue
+
+        # check that files exist in target folder
+        print("Checking whether files already exist in target folder")
+        search_raw_path = dir_with_raw_files.glob("*.fastq")
+        search_sonar1_path = dir_with_sonar1_files.glob("*.fasta")
+        search_sonar2_path = dir_with_sonar2_files.glob("*.fasta")
+
+        # check if the generator is empty = no files in glob search
+        for n, file in enumerate(search_raw_path):
+            pass
+        for n, file in enumerate(search_sonar1_path):
+            pass
+        for n, file in enumerate(search_sonar2_path):
+            pass
+
+    if n == 0:
+        print("No files found in target directories")
+    else:
+        print("files found")
+
+    if rerun_step == 1:
+        step_1_run_sample_processing(command_call_processing)
+        rerun_step += 1
+
+    if rerun_step == 2:
+        step_2_run_sonar_1(command_call_sonar_1)
+        rerun_step += 1
+
+    if rerun_step == 3:
+    step_2_run_sonar_1(command_call_sonar_2)
 
     print("Done")
 
 
 if __name__ == "__main__":
     args = docopt(__doc__, version='V0.1.0')
-    # print(args)
 
-    main(path=args['<project_path>'], settings=args['<settings_file>'])
-
-    # main(docopt(arguments))
-
-    # print(args)
-    # main(path, settings)
-
-    # parser = argparse.ArgumentParser(description='This is a wrapper to automate the NGS nAb processing and analysis '
-    #                                              'pipeline')
-    # parser.add_argument('-p', '--path', type=str,
-    #                     help='The path to the project folder, where the folders will be created', required=True)
-    # parser.add_argument('-s', '--settings', type=str,
-    #                     help='the path and file name of the settings csv file', required=True)
-    #
-    # args = parser.parse_args()
-    # path = args.path
-    # settings = args.settings
-    #
-    # main(path, settings)
+    main(path=args['<project_path>'], settings=args['<settings_file>'], rerun_step=args['<rerun_step>'])
