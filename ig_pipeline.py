@@ -19,6 +19,8 @@ import pandas as pd
 import pathlib
 import subprocess
 import collections
+import datetime
+
 
 __author__ = 'Colin Anthony'
 
@@ -139,7 +141,7 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mAb_name):
                                                                                            exist_ok=True)
 
 
-def unzip_files(path):
+def unzip_files(path, logfile):
     """
     a function to unpack .zip archives and decompress any .gz files
     :param path: the path to the project folder
@@ -151,12 +153,18 @@ def unzip_files(path):
         for file in search_zip:
             if file.suffix == ".zip":
                 print("one archived file detected")
-                cmd = f"jar xvf {file}"
+                cmd_jar = f"jar xvf {file}"
                 # cmd = f"unzip -o -d ./ {file}"
-                subprocess.call(cmd, shell=True)
+                subprocess.call(cmd_jar, shell=True)
 
-                cmd = f"rm {file}"
-                subprocess.call(cmd, shell=True)
+                cmd_rm = f"rm {file}"
+                subprocess.call(cmd_rm, shell=True)
+                # log command
+                with open(logfile, "a") as handle:
+                    handle.write("# unzipping archive\n")
+                    handle.write(cmd_jar +"\n")
+                    handle.write("# removing original archive\n")
+                    handle.write(cmd_rm + "\n")
 
     search_gz = list(pathlib.Path(path, "0_new_data").glob("*.gz"))
     if search_gz:
@@ -164,25 +172,36 @@ def unzip_files(path):
             # do replace all '-' with '_' in file name
             # Todo: change to nicd version of rename
             # cmd = f"rename -v '-' '_' {file}"
-            cmd = f"rename 's/-/_/g' {file}"
-            subprocess.call(cmd, shell=True)
+            cmd_rename = f"rename 's/-/_/g' {file}"
+            os.chmod(str(file), 0o777)
+            subprocess.call(cmd_rename, shell=True)
+            # log command
+            with open(logfile, "a") as handle:
+                handle.write("# replacing '-' with '_'\n")
+                handle.write(cmd_rename + "\n")
 
         # Todo: make job name
         gunzip_job_name = ''
         run_gunzip = pathlib.Path(path, "scripts", "run_gunzip.sh")
-        os.chmod(run_gunzip, 0o777)
+        print(run_gunzip)
+
         with open(run_gunzip, "w") as handle:
-            handle.write("#!/bin/sh\n")
-            handle.write("#SBATCH -J gzip\n")
-            handle.write("#SBATCH --mem=1000\n\n")
-            # handle.write(f"gunzip *.gz")
+            # handle.write("#!/bin/sh\n")
+            # handle.write("#SBATCH -J gzip\n")
+            # handle.write("#SBATCH --mem=1000\n\n")
+            handle.write(f"gunzip *.gz")
         #Todo: change to nicd version
-        cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip}"
-        # cmd_gunzip = f"{run_gunzip}"
+        os.chmod(run_gunzip, 0o777)
+        # cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip}"
+        cmd_gunzip = f"{run_gunzip}"
         subprocess.call(cmd_gunzip, shell=True)
+        # log command
+        with open(logfile, "a") as handle:
+            handle.write("# uncompressing .gz files\n")
+            handle.write(cmd_gunzip + "\n")
 
 
-def move_raw_data(path, settings_dataframe):
+def move_raw_data(path, settings_dataframe, logfile):
     """
     function to move raw data to the correct folder within the project
     :param path: path to the project folder
@@ -200,7 +219,8 @@ def move_raw_data(path, settings_dataframe):
     raw_files = list(pathlib.Path(path, "0_new_data").glob("*.fastq"))
     if not raw_files:
         print("No fastq (fastq.gz/fastq.zip) files in 0new_data")
-        return
+        with open(logfile, "a") as handle:
+            handle.write("# No fastq (fastq.gz/fastq.zip) files in 0new_data\n")
 
     for file in raw_files:
         full_name = file
@@ -212,6 +232,9 @@ def move_raw_data(path, settings_dataframe):
         if fields.empty:
             print(f"Your sample name {search_name}\nwas not found in the settings 'sample_name' column\n"
                   f"Please fix the file name or settings file accordingly")
+            with open(logfile, "a") as handle:
+                handle.write(f"Your sample name {search_name}\nwas not found in the settings 'sample_name' column\n")
+                handle.write(f"Please fix the file name or settings file accordingly\nexiting")
             sys.exit("exiting")
 
         lineage = fields.iloc[0]["lineage"].lower()
@@ -243,260 +266,24 @@ def move_raw_data(path, settings_dataframe):
 
             cmd = f"mv {full_name} {destination}"
             subprocess.call(cmd, shell=True)
+            with open(logfile, "a") as handle:
+                handle.write(f"# moving files to target folder\n{cmd}\n")
 
 
-def step_1_run_sample_processing(command_call_processing):
+def make_job_lists(path, list_all_jobs_to_run):
     """
-    function to process the raw fastq files into dereplicated fasta files for sonar1
-    :param command_call_processing: (list of lists) each list contains the sample name and path to the raw data
-    :return: none
+    function to generate a list of samples to run for each step in pipeline
+    :param path: (pathlib object) the project folder path
+    :param list_all_jobs_to_run:
+    :return: (list) of jobs to run for each step
     """
-
-    files_to_derep_dict = collections.defaultdict(list)
-
-    for item in command_call_processing:
-        sample_name = item[0]
-        dir_with_raw_files = item[1]
-        parent_path = dir_with_raw_files.parent
-
-        merged_folder = pathlib.Path(parent_path, "2_merged_filtered")
-        fasta_folder = pathlib.Path(parent_path, "3_fasta")
-
-        search_raw_files = dir_with_raw_files.glob(f"{sample_name}*_R1_*.fastq*")
-        for file_R1 in search_raw_files:
-            file_R2 = str(file_R1).replace("_R1_", "_R2_")
-            file_R2 = pathlib.Path(file_R2)
-
-            # if can't find the matched paired R2 file, skip and go to next R1 file
-            if not file_R2.is_file():
-                print(f"R2 paired file not found\nSkipping this sample: {file_R1}")
-                continue
-            else:
-                # if both R1 and R2 files are present, continue with the processing
-                # if you are re-running step 1, the files will be zipped. Check for this and unzip if needed
-                extension_R1 = file_R1.suffix
-                extension_R2 = file_R2.suffix
-                if extension_R1 == ".gz":
-                    cmd_unzip_R1 = f"gunzip {file_R1}"
-                    subprocess.call(cmd_unzip_R1, shell=True)
-                    file_R1 = pathlib.Path(str(file_R1).replace(".gz", ""))
-                if extension_R2 == ".gz":
-                    cmd_unzip_R2 = f"gunzip {file_R2}"
-                    subprocess.call(cmd_unzip_R2, shell=True)
-                    file_R2 = pathlib.Path(str(file_R2).replace(".gz", ""))
-
-                # run PEAR
-                pear_outfile = file_R1.name.replace("fastq", "")
-                pear_outfile = f"{pear_outfile}"
-                merged_file_name = pathlib.Path(merged_folder, pear_outfile)
-                # Todo: set job name
-                pear_job_name = ''
-
-                # create SLURM file to run PEAR on the cluster
-                run_pear = pathlib.Path(parent_path, "scripts", "run_pear.sh")
-                os.chmod(run_pear, 0o777)
-                with open(run_pear, "w") as handle:
-                    handle.write("#!/bin/sh\n")
-                    handle.write("##SBATCH -w, --nodelist=node01\n")
-                    handle.write("#SBATCH --mem=1000\n")
-                    handle.write(f"pear -f {file_R1} -r {file_R2} -o {merged_file_name} -p 0.001 -j 4")
-
-                cmd_pear = f"sbatch -J {pear_job_name} {run_pear}"
-                subprocess.call(cmd_pear, shell=True)
-                #Todo: capture pear stdout to logging file
-
-                # compress 1_raw_data if the merging was successful
-                merged_files_list = list(pathlib.Path(merged_folder).glob(f"{sample_name}*.assembled.fastq"))
-                if merged_files_list:
-                    cmd_zip = f"gzip {file_R1} {file_R2}"
-                    subprocess.call(cmd_zip, shell=True)
-
-                # remove unmerged files?
-                unassmebled_search = pathlib.Path(merged_folder).glob(f"{sample_name}*unassembled*.fastq")
-                discarded_search = pathlib.Path(merged_folder).glob(f"{sample_name}*discarded.fastq")
-                for file in unassmebled_search:
-                    cmd_rm = f"rm {file}"
-                    subprocess.call(cmd_rm, shell=True)
-                for file in discarded_search:
-                    cmd_rm = f"rm {file}"
-                    subprocess.call(cmd_rm, shell=True)
-
-                # convert to fasta
-                # Todo: set job name
-                seqmagick_job_name = ''
-                if len(merged_files_list) != 1:
-                    # this should not be possible, since any existing file should have been overwritten
-                    print(f"multiple merged files found for this sample:\n{merged_files_list}")
-                    sys.exit("exiting")
-                else:
-                    fastq = merged_files_list[0]
-                fasta = f"{str(fastq.stem)}.fasta"
-                fasta = pathlib.Path(fasta_folder, fasta)
-                run_seqmagick = pathlib.Path(parent_path, "scripts", "run_convert_to_fasta.sh")
-                os.chmod(run_seqmagick, 0o777)
-                with open(run_seqmagick, "w") as handle:
-                    handle.write("#!/bin/sh\n")
-                    handle.write("##SBATCH -w, --nodelist=node01\n")
-                    handle.write("#SBATCH --mem=1000\n")
-                    handle.write(f"seqmagick convert {fastq} {fasta}")
-
-                cmd_seqmagick = f"sbatch -J {seqmagick_job_name} {run_seqmagick}"
-                subprocess.call(cmd_seqmagick, shell=True)
-
-                # compress pear if the merged file was successfully converted to a fasta file
-                if fasta.is_file():
-                    # add file to list of fastas to derep (or just be moved to derep folder if only a single fasta)
-                    # get path for dict key (ie: folder for all fastas for a given sonar 1 job)
-                    files_to_derep_dict[str(fasta_folder.parent)].append(fasta)
-                    cmd_zip = f"gzip {fastq}"
-                    subprocess.call(cmd_zip, shell=True)
-                else:
-                    print("could not find the fasta file\nconversion of fastq to fasta might have failed\n")
-                    sys.exit("exiting")
-
-    # move fastas to target dir and do dereplication in needed
-    for folder, fasta_file_list in files_to_derep_dict.items():
-        fasta_folder = pathlib.Path(folder, "3_fasta")
-        derep_folder = pathlib.Path(folder, "4_dereplicated")
-        sample_name = "_".join(fasta_file_list[0].stem.split("_")[:-1])
-
-        # check if have multiple files and concatenate if needed
-        if len(fasta_file_list) > 1:
-            concated_outfile = pathlib.Path(fasta_folder, f"{sample_name}_concatenated.fasta")
-            if concated_outfile.is_file():
-                # remove existing file so that you don't accidentally concatenate in duplicate
-                print(f"{concated_outfile}\nalready exists\nthis file will be overwritten")
-                cmd_rm = f"rm {concated_outfile}"
-                subprocess.call(cmd_rm, shell=True)
-            # concatenate multiple fasta files
-            for file in fasta_file_list:
-                concat_cmd = f"cat {file} >> {concated_outfile}"
-                subprocess.call(concat_cmd, shell=True)
-            file_to_dereplicate = concated_outfile
-        # only one fasta file for this sample
-        elif len(fasta_file_list) == 1:
-            # copy fasta to 4_dereplicated
-            file_to_dereplicate = fasta_file_list[0]
-
-        else:
-            print(f"no Fasta files were found\nskipping this sample: {sample_name}")
-            continue
-
-        # zip fasta files
-        for fasta_file in fasta_file_list:
-            cmd_zip = f"gzip {fasta_file}"
-            subprocess.call(cmd_zip)
-
-        # set dereplicated outfile name
-        dereplicated_file = pathlib.Path(derep_folder, f"{sample_name}_unique.fasta")
-        # dereplicate sequences using vsearch
-        dereplicate_cmd = f"vsearch dereplicate {file_to_dereplicate} {dereplicated_file}"
-        subprocess.call(dereplicate_cmd,shell=True)
-
-        # remove non-dereplicated file
-        cmd_rm_to_derep_file = f"rm {file_to_dereplicate}"
-        subprocess.call(cmd_rm_to_derep_file, shell=True)
-
-
-def step_2_run_sonar_1(command_call_sonar_1):
-    """
-
-    :param command_call_sonar_1:
-    :return:
-    """
-    for item in command_call_sonar_1:
-        sample_name = item[0]
-        dir_with_sonar1_files = item[1]
-        sonar_version = item[2]
-
-        # check that only one file in target dir
-
-        job_name = ''
-
-        if sonar_version == "heavy":
-            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar-P1-H.sh"
-        elif sonar_version == "kappa":
-            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar_light.sh"
-        elif sonar_version == "lambda":
-            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar_P1-kappa.sh"
-
-        # tar.gz output
-
-
-def step_3_run_sonar_2(command_call_sonar_2):
-    for item in command_call_sonar_2:
-        sample_name = item[0]
-        dir_with_sonar2_files = item[1]
-        sonar_version = item[2]
-        primer_name = item[3]
-        known_mab_name = item[4]
-
-        # check that target dirs are empty
-
-        # check that there is enough disk space, send warning if not
-
-        # copy files to desired directory
-
-        # unzip files
-
-        # run sonar2
-
-
-def main(path, settings):
-    """
-    create folder structure for a sequencing project
-    :param path: (str) path to where the folders should be made
-    :param settings: (str) the path and csv file with the run settings
-    """
-    get_script_path = pathlib.Path(__file__)
-    get_script_path = get_script_path.absolute()
-    script_folder = get_script_path.parent
-    print(script_folder)
-
-    path = pathlib.Path(path).absolute()
-    settings = pathlib.Path(settings).absolute()
-    settings_dataframe = pd.read_csv(settings, sep=None, engine='python')
-
-    # check that settings file has the correct headings
-    settings_dict = settings_checker(settings_dataframe)
-
-    # make a list of the jobs to run and the settings required and make the required folders
-    list_all_jobs_to_run = []
-    for job_entry, job_settings in settings_dict.items():
-        sample_id = job_settings["sample_name"].upper()
-        known_mab_name = job_settings["known_mab_name"].upper()
-        run_step1 = job_settings["run_step1"]
-        run_step2 = job_settings["run_step2"]
-        run_step3 = job_settings["run_step3"]
-
-        lineage = job_settings["lineage"].lower()
-        time_point = job_settings["time_point"].lower()
-        chain = job_settings["sonar_1_version"].lower()
-        primer_name = job_settings["primer_name"].upper()
-
-        list_all_jobs_to_run.append([[sample_id], [lineage, time_point, chain], [run_step1, run_step2, run_step3],
-                                 [primer_name], [known_mab_name]])
-
-        # make the folders if they don't already exist
-        step_0_make_folders(path, lineage, time_point, chain, primer_name)
-
-    # unzip_files(dir_with_files)
-    unzip_files(path)
-
-    # move files from 0_new_data, into correct directory, if necessary
-    move_raw_data(path, settings_dataframe)
-
+    # counter for checking if there are files to run the pipeline on
+    n = 0
+    # get job list entries
     command_call_processing = []
     command_call_sonar_1 = []
     command_call_sonar_2 = []
 
-    if not list_all_jobs_to_run:
-        print("No jobs were found in the settings file\nCheck that the file format was correct "
-              "and that it contains entries")
-        sys.exit("exiting")
-
-    # counter for checking if there are files to run the pipeline on
-    n = 0
     for job_entry in list_all_jobs_to_run:
         sample_name = job_entry[0]
         dir_with_raw_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "1_raw_data")
@@ -523,8 +310,8 @@ def main(path, settings):
             continue
 
         # check that files exist in target folder
-        search_raw_path = list(dir_with_raw_files.glob("*.fastq"))
-        search_sonar1_path = list(dir_with_sonar1_files.glob("*.fasta"))
+        search_raw_path = list(dir_with_raw_files.glob("*.fastq*"))
+        search_sonar1_path = list(dir_with_sonar1_files.glob("*.fasta*"))
 
         # increment n with the count of files found
         n += len(search_raw_path)
@@ -538,12 +325,314 @@ def main(path, settings):
     else:
         print("files found")
 
+    return command_call_processing, command_call_sonar_1, command_call_sonar_2
+
+
+def step_1_run_sample_processing(command_call_processing, logfile):
+    """
+    function to process the raw fastq files into dereplicated fasta files for sonar1
+    :param command_call_processing: (list of lists) each list contains the sample name and path to the raw data
+    :return: none
+    """
+    for item in command_call_processing:
+        sample_name = item[0]
+        print(f"processing {sample_name}")
+
+        dir_with_raw_files = item[1]
+        parent_path = dir_with_raw_files.parent
+        project_path = dir_with_raw_files.parents[3]
+        merged_folder = pathlib.Path(parent_path, "2_merged_filtered")
+        fasta_folder = pathlib.Path(parent_path, "3_fasta")
+        derep_folder = pathlib.Path(parent_path, "4_dereplicated")
+
+        # check for zipped files
+        search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R*.fastq.gz"))
+        if search_zip_raw_files:
+            for file in search_zip_raw_files:
+                cmd_gunzip = f"gunzip {file}"
+                subprocess.call(cmd_gunzip, shell=True)
+
+            # remove old merged file
+            print(f"removing old merged file for {sample_name}")
+            for file in merged_folder.glob(f"{sample_name}*.fastq*"):
+                cmd_rm = f"rm {file}"
+                subprocess.call(cmd_rm, shell=True)
+
+            # remove old fasta file
+            print(f"removing old fasta file for {sample_name}")
+            for file in fasta_folder.glob(f"{sample_name}*.fasta*"):
+                cmd_rm = f"rm {file}"
+                subprocess.call(cmd_rm, shell=True)
+            # remove old dereplicated file
+            print(f"removing old dereplicated file for {sample_name}")
+            trunc_name = "_".join(sample_name.split("_")[:-1])
+            for file in derep_folder.glob(f"{trunc_name}*_unique.fasta"):
+                cmd_rm = f"rm {file}"
+                subprocess.call(cmd_rm, shell=True)
+
+        search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq"))
+        for file_R1 in search_raw_files:
+            file_R2 = str(file_R1).replace("_R1.fastq", "_R2.fastq")
+            file_R2 = pathlib.Path(file_R2)
+            # if can't find the matched paired R2 file, skip and go to next R1 file
+            if not file_R2.is_file():
+                print(f"R2 paired file not found\nSkipping this sample: {file_R1}")
+                continue
+            else:
+                # if both R1 and R2 files are present, continue with the processing
+                # run PEAR
+                print("running PEAR")
+                pear_outfile = file_R1.name.replace("_R1.fastq", "")
+                pear_outfile = f"{pear_outfile}"
+                merged_file_name = pathlib.Path(merged_folder, pear_outfile)
+                # Todo: set job name
+                pear_job_name = ''
+
+                # create SLURM file to run PEAR on the cluster
+                # Todo: change to nicd version
+                run_pear = pathlib.Path(project_path, "scripts", "run_pear.sh")
+                with open(run_pear, "w") as handle:
+                    # handle.write("#!/bin/sh\n")
+                    # handle.write("##SBATCH -w, --nodelist=node01\n")
+                    # handle.write("#SBATCH --mem=1000\n")
+                    handle.write(f"pear -f {file_R1} -r {file_R2} -o {merged_file_name} -p 0.001 -j 4")
+                os.chmod(str(run_pear), 0o777)
+                with open(logfile, "a") as handle:
+                    handle.write(f"# running PEAR command from file:\n{run_pear}\n")
+                # cmd_pear = f"sbatch -J {pear_job_name} {run_pear}"
+                cmd_pear = f"{run_pear}"
+                # subprocess.call(cmd_pear, shell=True)
+                pear_output = subprocess.check_output(cmd_pear, shell=True)
+                pear_output = pear_output.decode("utf-8")
+                with open(logfile, "a") as handle:
+                    handle.write(pear_output)
+                    handle.write("\n")
+
+                # compress 1_raw_data if the merging was successful
+                merged_files_list = list(pathlib.Path(merged_folder).glob(f"{sample_name}.assembled.fastq"))
+                if merged_files_list:
+                    cmd_zip = f"gzip {file_R1} {file_R2}"
+                    subprocess.call(cmd_zip, shell=True)
+
+                # remove unmerged files
+                unassmebled_search = pathlib.Path(merged_folder).glob(f"{sample_name}*unassembled*.fastq")
+                discarded_search = pathlib.Path(merged_folder).glob(f"{sample_name}*discarded.fastq")
+                for file in unassmebled_search:
+                    cmd_rm = f"rm {file}"
+                    subprocess.call(cmd_rm, shell=True)
+                for file in discarded_search:
+                    cmd_rm = f"rm {file}"
+                    subprocess.call(cmd_rm, shell=True)
+
+                # convert to fasta
+                # Todo: set job name
+                seqmagick_job_name = ''
+                if len(merged_files_list) > 1:
+                    # this should not be possible, since any existing file should have been overwritten
+                    print(f"multiple merged files found for this sample:\n{merged_files_list}")
+                    sys.exit("exiting")
+                elif len(merged_files_list) == 0:
+                    print('all files', list(pathlib.Path(merged_folder).glob("*")))
+                    print(f"no merged files found for this sample:\n{sample_name}")
+                    sys.exit("exiting")
+                else:
+                    fastq = merged_files_list[0]
+                fasta = f"{str(fastq.stem)}.fasta"
+                fasta = pathlib.Path(fasta_folder, fasta)
+                # create SLURM file
+                # Todo: change to nicd version
+                run_seqmagick = pathlib.Path(project_path, "scripts", "run_convert_to_fasta.sh")
+                with open(run_seqmagick, "w") as handle:
+                    # handle.write("#!/bin/sh\n")
+                    # handle.write("##SBATCH -w, --nodelist=node01\n")
+                    # handle.write("#SBATCH --mem=1000\n")
+                    handle.write(f"seqmagick convert {fastq} {fasta}")
+                os.chmod(run_seqmagick, 0o777)
+                with open(logfile, "a") as handle:
+                    handle.write(f"# running fastq_to_fasta command from file:\n{run_seqmagick}\n")
+                # cmd_seqmagick = f"sbatch -J {seqmagick_job_name} {run_seqmagick}"
+                cmd_seqmagick = f"{run_seqmagick}"
+                subprocess.call(cmd_seqmagick, shell=True)
+
+                # compress pear if the merged file was successfully converted to a fasta file
+                if fasta.is_file():
+                    # add file to list of fastas to derep (or just be moved to derep folder if only a single fasta)
+                    cmd_zip_merged = f"gzip {fastq}"
+                    subprocess.call(cmd_zip_merged, shell=True)
+                else:
+                    print("could not find the fasta file\nconversion of fastq to fasta might have failed\n")
+                    sys.exit("exiting")
+
+    # move fastas to target dir and do dereplication in needed
+    with open(logfile, "a") as handle:
+        handle.write(f"# dereplicating files\n")
+
+    files_to_derep_dict = collections.defaultdict(list)
+    for item in command_call_processing:
+        sample_name = item[0]
+        dir_with_raw_files = item[1]
+        parent_path = dir_with_raw_files.parent
+        files_to_derep_dict[str(parent_path)].append(sample_name)
+
+    for folder, sample_name_list in files_to_derep_dict.items():
+        fasta_folder = pathlib.Path(folder, "3_fasta")
+        derep_folder = pathlib.Path(folder, "4_dereplicated")
+
+        search_fasta_folder = list(pathlib.Path(fasta_folder).glob("*.fasta"))
+        primers = []
+        name_stem = ''
+        for i, fasta_file in enumerate(search_fasta_folder):
+            name = fasta_file.stem.replace(".assembled", "").split("_")
+            print(name)
+            if i == 0:
+                name_stem += "_".join(name[:-1])
+            primer = name[-1]
+            primers.append(primer)
+        primers_code = "_".join(primers)
+
+        search_fasta_folder = list(pathlib.Path(fasta_folder).glob("*.fasta"))
+        fasta_to_derep_name_stem = f"{name_stem}_{primers_code}"
+        if len(search_fasta_folder) > 1:
+            concated_outfile = pathlib.Path(fasta_folder, f"{fasta_to_derep_name_stem}_concatenated.fasta")
+            print(concated_outfile)
+            input("enter")
+            if concated_outfile.is_file():
+                # remove existing file so that you don't accidentally concatenate in duplicate
+                print(f"{concated_outfile}\nalready exists\nthis file will be overwritten")
+                cmd_rm = f"rm {concated_outfile}"
+                subprocess.call(cmd_rm, shell=True)
+            # concatenate multiple fasta files
+            for file in search_fasta_folder:
+                concat_cmd = f"cat {file} >> {concated_outfile}"
+                subprocess.call(concat_cmd, shell=True)
+            file_to_dereplicate = concated_outfile
+        # only one fasta file for this sample
+        elif len(search_fasta_folder) == 1:
+            # copy fasta to 4_dereplicated
+            file_to_dereplicate = search_fasta_folder[0]
+        else:
+            print(f"no Fasta files were found\nskipping this sample: {sample_name_list}")
+            continue
+
+        # set dereplicated outfile name
+        dereplicated_file = pathlib.Path(derep_folder, f"{fasta_to_derep_name_stem}_unique.fasta")
+        # dereplicate sequences using vsearch
+        dereplicate_cmd = f"vsearch --sizeout --derep_fulllength {file_to_dereplicate} --output {dereplicated_file}"
+        subprocess.call(dereplicate_cmd,shell=True)
+
+        # remove non-dereplicated file if you had to concatenate multiple files
+        for file in pathlib.Path(fasta_folder).glob(f"*_concatenated.fasta"):
+            cmd_rm_to_derep_file = f"rm {file}"
+            subprocess.call(cmd_rm_to_derep_file, shell=True)
+
+
+def step_2_run_sonar_1(command_call_sonar_1, logfile):
+    """
+    function to automate calling sonar1 on NGS Ab dereplicated fasta files
+    :param command_call_sonar_1:
+    :return:
+    """
+    for item in command_call_sonar_1:
+        sample_name = item[0]
+        dir_with_sonar1_files = item[1]
+        sonar_version = item[2]
+
+        # check that only one file in target dir
+
+        job_name = ''
+
+        if sonar_version == "heavy":
+            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar-P1-H.sh"
+        elif sonar_version == "kappa":
+            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar_light.sh"
+        elif sonar_version == "lambda":
+            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar_P1-kappa.sh"
+
+        # tar.gz output
+
+
+def step_3_run_sonar_2(command_call_sonar_2, logfile):
+    for item in command_call_sonar_2:
+        sample_name = item[0]
+        dir_with_sonar2_files = item[1]
+        sonar_version = item[2]
+        primer_name = item[3]
+        known_mab_name = item[4]
+        known_mab_name_file = ''
+        "#!/bin/sh"
+        "##SBATCH -w, --nodelist=bio-linux"
+        "#SBATCH --mem=26000"
+        "perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl"
+        f"-a {known_mab_name_file} -ap muscle"
+
+        # check that target dirs are empty
+
+        # check that there is enough disk space, send warning if not
+
+        # copy files to desired directory
+
+        # unzip files
+
+        # run sonar2
+
+
+def main(path, settings):
+    """
+    create folder structure for a sequencing project
+    :param path: (str) path to where the folders should be made
+    :param settings: (str) the path and csv file with the run settings
+    """
+    path = pathlib.Path(path).absolute()
+    settings = pathlib.Path(settings).absolute()
+    settings_dataframe = pd.read_csv(settings, sep=None, engine='python')
+    time_stamp = str('{:%Y-%m-%d_%H_%M}'.format(datetime.datetime.now()))
+    log_file = pathlib.Path(path, f"{time_stamp}_log_file.txt")
+    with open(log_file, "w") as handle:
+        handle.write("# start of pipeline run")
+    os.chmod(str(log_file), 0o777)
+
+    # check that settings file has the correct headings
+    settings_dict = settings_checker(settings_dataframe)
+
+    # make a list of the jobs to run and the settings required and make the required folders
+    list_all_jobs_to_run = []
+    for job_entry, job_settings in settings_dict.items():
+        sample_id = job_settings["sample_name"]
+        known_mab_name = job_settings["known_mab_name"].upper()
+        run_step1 = job_settings["run_step1"]
+        run_step2 = job_settings["run_step2"]
+        run_step3 = job_settings["run_step3"]
+
+        lineage = job_settings["lineage"].lower()
+        time_point = job_settings["time_point"].lower()
+        chain = job_settings["sonar_1_version"].lower()
+        primer_name = job_settings["primer_name"].upper()
+        job_list_entry = sample_id, [lineage, time_point, chain], [run_step1, run_step2, run_step3], primer_name, \
+                         known_mab_name
+        list_all_jobs_to_run.append(job_list_entry)
+
+        # make the folders if they don't already exist
+        step_0_make_folders(path, lineage, time_point, chain, primer_name)
+
+    # unzip_files(dir_with_files)
+    unzip_files(path, log_file)
+
+    # move files from 0_new_data, into correct directory, if necessary
+    move_raw_data(path, settings_dataframe, log_file)
+
+    if not list_all_jobs_to_run:
+        print("No jobs were found in the settings file\nCheck that the file format was correct "
+              "and that it contains entries")
+        sys.exit("exiting")
+
+    # generate the job lists
+    command_call_processing, command_call_sonar_1, command_call_sonar_2 =  make_job_lists(path, list_all_jobs_to_run)
     # only run sample processing if one or more files were specified
     if command_call_processing:
+        print("processing samples")
         # get rid of duplicate entries in sample processing list, if present
-        command_call_processing = list(set(command_call_processing))
-        input("processing")
-        step_1_run_sample_processing(command_call_processing)
+        command_call_processing = list(set(tuple(x) for x in command_call_processing))
+        step_1_run_sample_processing(command_call_processing, log_file)
 
     # # only run sonar1 if one or more files were specified
     # if command_call_sonar_1:
