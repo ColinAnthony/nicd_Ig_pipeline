@@ -188,6 +188,11 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name):
     :return: None
     """
 
+    # check for 0_new_data folder
+
+
+
+
     known_mab_name = "5_" + known_mab_name
     pathlib.Path(path, "scripts").mkdir(mode=0o777, parents=True, exist_ok=True)
 
@@ -219,6 +224,14 @@ def unzip_files(path, logfile):
     :return:
     """
     new_data = pathlib.Path(path, "0_new_data")
+    if not new_data.is_dir():
+        print(f"'0_new_data' folder not found\n"
+              f"You need to create a folder '0_new_data' in the project folder, ie:\n{new_data}"
+              f"\n and copy your data in there")
+        print("making the folder for you")
+        new_data.mkdir(mode=0o777, parents=True, exist_ok=True)
+        sys.exit("exiting")
+
     search_zip = list(new_data.glob("*.zip"))
     if search_zip:
         for file in search_zip:
@@ -729,10 +742,20 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, logfile):
     for item in command_call_sonar_2:
         sample_name = item[0]
         dir_with_sonar2_files = item[1]
+        parent_dir = dir_with_sonar2_files.parents[3]
         sonar_version = item[2]
         primer_name = item[3]
         known_mab_name = item[4]
         mab_sequence = fasta_sequences[known_mab_name]
+        # check for mab_sequences folder
+        fasta_sequences = pathlib.Path(parent_dir, "mab_sequences")
+        if not fasta_sequences.is_dir():
+            print(f"'mab_sequences' folder not found\n"
+                  f"You need to create a folder 'mab_sequences' in the project folder, ie:\n{fasta_sequences}"
+                  f"\nand copy your fasta file in there")
+            print("making the folder for you")
+            fasta_sequences.mkdir(mode=0o777, parents=True, exist_ok=True)
+            sys.exit("exiting")
 
         with open(logfile, "a") as handle:
             handle.write(f"running Sonar P1 on {sample_name}\n")
