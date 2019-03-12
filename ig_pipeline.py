@@ -2,17 +2,17 @@
 """This is a wrapper to automate the NGS nAb processing and analysis pipeline.
 
     Usage:
-         ig_pipeline.py (-p <project_path>) (-s <settings_file>)
+         ig_pipeline.py (-p <project_path>) (-s <settings_file>) -f <fasta_file>)
          ig_pipeline.py -h
          ig_pipeline.py -v
 
     Options:
          -p --path          The path to the project folder, where the folders will be created
          -s --settings      The path and file name of the settings csv file
+         -f --fasta_file    The path and name of the fasta file with your mAb sequences
          -v --version       Show the script version number
          -h --help          Show this screen.
 """
-# builtin libraries
 import sys
 import os
 import subprocess
@@ -20,6 +20,7 @@ import collections
 import datetime
 import random
 import string
+from itertools import groupby
 # external libraries
 from docopt import docopt
 import pathlib
@@ -27,6 +28,40 @@ import pandas as pd
 
 
 __author__ = 'Colin Anthony'
+
+
+def py3_fasta_iter(fasta_name):
+    """
+    modified from Brent Pedersen: https://www.biostars.org/p/710/#1412
+    given a fasta file. yield tuples of header, sequence
+    """
+    fh = open(str(fasta_name), 'r')
+    faiter = (x[1] for x in groupby(fh, lambda line: line[0] == ">"))
+    for header in faiter:
+        # drop the ">"
+        header_str = header.__next__()[1:].strip()
+        # join all sequence lines to one.
+        seq = "".join(s.strip() for s in faiter.__next__())
+        yield (header_str, seq)
+
+
+def fasta_to_dct(file_name):
+    """
+    :param file_name: The fasta formatted file to read from.
+    :return: a dictionary of the contents of the file name given. Dictionary in the format:
+    {sequence_id: sequence_string, id_2: sequence_2, etc.}
+    """
+    dct = collections.defaultdict(str)
+    my_gen = py3_fasta_iter(file_name)
+    for k, v in my_gen:
+        v = v.replace("-", "")
+        new_key = k.replace(" ", "_")
+        if new_key in dct.keys():
+            print("Duplicate sequence ids found. Exiting")
+            raise KeyError("Duplicate sequence ids found")
+        dct[new_key] = v.upper()
+
+    return dct
 
 
 def settings_checker(settings_dataframe):
@@ -330,7 +365,6 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
         sample_name = job_entry[0]
         dir_with_raw_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "1_raw_data")
         dir_with_sonar1_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "4_dereplicated")
-
         chain = job_entry[1][2]
         primer_name = job_entry[3]
         known_mab_name = job_entry[4]
@@ -382,7 +416,7 @@ def step_1_run_sample_processing(command_call_processing, logfile):
     for item in command_call_processing:
         sample_name = item[0]
         with open(logfile, "a") as handle:
-            handle.write(f"working on {sample_name}\n")
+            handle.write(f"running Sonar P1 on {sample_name}\n")
 
         print(f"processing {sample_name}")
 
@@ -609,7 +643,7 @@ def step_1_run_sample_processing(command_call_processing, logfile):
             os.unlink(str(file))
 
 
-def step_2_run_sonar_1(command_call_sonar_1, logfile):
+def step_2_run_sonar_p1(command_call_sonar_1, logfile):
     """
     function to automate calling sonar1 on NGS Ab dereplicated fasta files
     :param command_call_sonar_1: list of samples to run sonar1 on
@@ -619,10 +653,29 @@ def step_2_run_sonar_1(command_call_sonar_1, logfile):
     for item in command_call_sonar_1:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
-        parent = pathlib.Path(dir_with_sonar1_files).parent
-        print(parent)
-        input("enter")
+        dir_with_sonar1_work = pathlib.Path(dir_with_sonar1_files, "work")
+        dir_with_sonar1_output = pathlib.Path(dir_with_sonar1_files, "output")
+
+        with open(logfile, "a") as handle:
+            handle.write(f"running Sonar P1 on {sample_name}\n")
+
+        # check whether there is already sonar P1 output in the target folders (if this is a rerun)
+        search_work = list(dir_with_sonar1_work.glob("*"))
+        search_output = list(dir_with_sonar1_output.glob("*"))
+        if search_work:
+            with open(logfile, "a") as handle:
+                handle.write(f"# removing existing files from sonar1 target directory {dir_with_sonar1_work}\n")
+            for file in search_work:
+                os.unlink(str(file))
+        if search_output:
+            with open(logfile, "a") as handle:
+                handle.write(f"# removing existing files from sonar1 target directory {dir_with_sonar1_output}\n")
+            for file in search_output:
+                os.unlink(str(file))
+
         sonar_version = item[2]
+        project_folder = dir_with_sonar1_files.parents[3]
+
         with open(logfile, "a") as handle:
             handle.write(f"# running sonar1 on {sample_name}\n")
 
@@ -642,7 +695,7 @@ def step_2_run_sonar_1(command_call_sonar_1, logfile):
         sonar_settings = {"heavy": "some settings", "kappa": "some settings", "lambda": "some settings"}
         sonar_version_setting = sonar_settings[sonar_version]
 
-        run_sonar = pathlib.Path(dir_with_sonar1_files, f"run_sonar_P1_{sonar_version}.sh")
+        run_sonar = pathlib.Path(project_folder, "scripts", f"run_sonar_P1_{sonar_version}.sh")
         with open(run_sonar, "w") as handle:
             # handle.write("#!/bin/sh\n")
             # handle.write("##SBATCH -w, --nodelist=node01\n")
@@ -652,10 +705,21 @@ def step_2_run_sonar_1(command_call_sonar_1, logfile):
         os.chmod(str(run_sonar), 0o777)
         with open(logfile, "a") as handle:
             handle.write(f"# running Sonar1 command from file:\n{str(run_sonar)}\n")
-        subprocess.call(run_sonar, shell=True)
+        try:
+            # change into sonar P1 targer directory
+            os.chdir(dir_with_sonar1_files)
+            # subprocess.call(run_sonar, shell=True)
+        except subprocess.CalledProcessError as e:
+            print(e)
+            print("Sonar P1 encountered an error\ntrying next sample")
+            with open(logfile, "a") as handle:
+                handle.write(f"Sonar P1 encountered \n{e}\n")
+            continue
+        # return cwd to the project folder
+        os.chdir(project_folder)
 
 
-def step_3_run_sonar_2(command_call_sonar_2, logfile):
+def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, logfile):
     """
     function to automate calling sonar1 on NGS Ab dereplicated fasta files
     :param command_call_sonar_2: list of samples to run sonar2 on
@@ -668,6 +732,11 @@ def step_3_run_sonar_2(command_call_sonar_2, logfile):
         sonar_version = item[2]
         primer_name = item[3]
         known_mab_name = item[4]
+        mab_sequence = fasta_sequences[known_mab_name]
+
+        with open(logfile, "a") as handle:
+            handle.write(f"running Sonar P1 on {sample_name}\n")
+
         known_mab_name_file = ''
         "#!/bin/sh"
         "##SBATCH -w, --nodelist=bio-linux"
@@ -686,13 +755,17 @@ def step_3_run_sonar_2(command_call_sonar_2, logfile):
         # run sonar2
 
 
-def main(path, settings):
+def main(path, settings, fasta_file):
     """
     create folder structure for a sequencing project
     :param path: (str) path to where the folders should be made
     :param settings: (str) the path and csv file with the run settings
+    :param fasta_file (str) the path and name of the fasta file with your mAb sequences
     """
     path = pathlib.Path(path).absolute()
+    # change the cwd to project path
+    os.chdir(path)
+
     project_name = path.parent
     settings = pathlib.Path(settings).absolute()
     settings_dataframe = pd.read_csv(settings, sep=None, engine='python')
@@ -740,23 +813,31 @@ def main(path, settings):
         for item in command_call_sonar_1:
             sample_name = "_".join(item[0].split("_")[:-1])
             sonar1_dir = item[1]
-            chain = item[0]
+            chain = item[2]
             if sonar1_dir in removed_sonor1_duplicates_check:
                 continue
             else:
                 removed_sonor1_duplicates_check.append(sonar1_dir)
                 dedup_sonar1_call.append([sample_name, sonar1_dir, chain])
-    #
-    #     step_2_run_sonar_1(command_call_sonar_1)
-    #
-    # # only run sonar 2 if one or more files were specified
-    # if command_call_sonar_2:
-    #     step_3_run_sonar_2(command_call_sonar_2)
+
+        step_2_run_sonar_p1(dedup_sonar1_call, log_file)
+
+    # only run sonar 2 if one or more files were specified
+    if command_call_sonar_2:
+        if not fasta_file:
+            fasta_sequences = fasta_to_dct(fasta_file)
+            step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, log_file)
+        else:
+            print("no fasta file specified for Sonar P2 to run\n")
+            sys.exit("exiting")
 
     print("Done")
 
 
 if __name__ == "__main__":
     args = docopt(__doc__, version='V0.1.0')
-
-    main(path=args['<project_path>'], settings=args['<settings_file>'])
+    if args["-f"]:
+        fasta = args['<fasta_file>']
+    else:
+        fasta = False
+    main(path=args['<project_path>'], settings=args['<settings_file>'], fasta_file=fasta)

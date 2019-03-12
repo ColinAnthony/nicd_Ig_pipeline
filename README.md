@@ -59,6 +59,7 @@ include an entry for each mAb, as shown in the settings template
         * also accepts .gz compressed files or .fastq files
     * prepare your settings.csv file, indicating which steps to run on which samples
         * if running additional samples, set previous samples to '0' in the three run_step columns
+* create a folder called `mab_sequences` which contains a fasta file with all the mAb sequencse you will need for sonar P2
  * run the wrapper script:
     * it is recommened to use `screen` or `nohup` as the run times will be long.
     
