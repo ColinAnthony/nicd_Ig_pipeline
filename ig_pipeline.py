@@ -12,16 +12,18 @@
          -v --version       Show the script version number
          -h --help          Show this screen.
 """
+# builtin libraries
 import sys
 import os
-from docopt import docopt
-import pandas as pd
 import pathlib
 import subprocess
 import collections
 import datetime
 import random
 import string
+# external libraries
+from docopt import docopt
+import pandas as pd
 
 
 __author__ = 'Colin Anthony'
