@@ -20,6 +20,8 @@ import pathlib
 import subprocess
 import collections
 import datetime
+import random
+import string
 
 
 __author__ = 'Colin Anthony'
@@ -385,21 +387,24 @@ def step_1_run_sample_processing(command_call_processing, logfile):
                 pear_outfile = file_R1.name.replace("_R1.fastq", "")
                 pear_outfile = f"{pear_outfile}"
                 merged_file_name = pathlib.Path(merged_folder, pear_outfile)
-                # Todo: set job name
-                pear_job_name = ''
 
                 # create SLURM file to run PEAR on the cluster
                 # Todo: change to nicd version
+                id_prefix = sample_name[3:6]
+                unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4)).lower()
+                pear_job_name = f"{id_prefix}{unique_suffix}"
+                print("Pear job", pear_job_name)
+
                 run_pear = pathlib.Path(project_path, "scripts", "run_pear.sh")
                 with open(run_pear, "w") as handle:
                     # handle.write("#!/bin/sh\n")
                     # handle.write("##SBATCH -w, --nodelist=node01\n")
                     # handle.write("#SBATCH --mem=1000\n")
-                    handle.write(f"pear -f {file_R1} -r {file_R2} -o {merged_file_name} -p 0.001 -j 4")
+                    handle.write(f"pear -f {file_R1} -r {file_R2} -o {merged_file_name} -p 0.001 -j 4 -q 20 -n 300 ")
                 os.chmod(str(run_pear), 0o777)
                 with open(logfile, "a") as handle:
                     handle.write(f"# running PEAR command from file:\n{run_pear}\n")
-                # cmd_pear = f"sbatch -J {pear_job_name} {run_pear}"
+                # cmd_pear = f"sbatch -J {pear_job_namepear} {run_pear}"
                 cmd_pear = f"{run_pear}"
                 # subprocess.call(cmd_pear, shell=True)
                 pear_output = subprocess.check_output(cmd_pear, shell=True)
@@ -425,34 +430,39 @@ def step_1_run_sample_processing(command_call_processing, logfile):
                     subprocess.call(cmd_rm, shell=True)
 
                 # convert to fasta
-                # Todo: set job name
-                seqmagick_job_name = ''
                 if len(merged_files_list) > 1:
                     # this should not be possible, since any existing file should have been overwritten
-                    print(f"multiple merged files found for this sample:\n{merged_files_list}")
+                    print(f"multiple merged files found for this sample:\n{merged_files_list}\n")
                     sys.exit("exiting")
                 elif len(merged_files_list) == 0:
-                    print('all files', list(pathlib.Path(merged_folder).glob("*")))
                     print(f"no merged files found for this sample:\n{sample_name}")
                     sys.exit("exiting")
                 else:
                     fastq = merged_files_list[0]
                 fasta = f"{str(fastq.stem)}.fasta"
                 fasta = pathlib.Path(fasta_folder, fasta)
-                # create SLURM file
+
+                # create fastq to fasta SLURM file
+                # set job id
+                id_prefix = sample_name[3:6]
+                unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4)).lower()
+                fastq_fasta_job_name = f"{id_prefix}{unique_suffix}"
+                print("fastq to fasta", fastq_fasta_job_name)
+
                 # Todo: change to nicd version
-                run_seqmagick = pathlib.Path(project_path, "scripts", "run_convert_to_fasta.sh")
-                with open(run_seqmagick, "w") as handle:
+                run_fastq_fasta = pathlib.Path(project_path, "scripts", "run_convert_to_fasta.sh")
+                with open(run_fastq_fasta, "w") as handle:
                     # handle.write("#!/bin/sh\n")
                     # handle.write("##SBATCH -w, --nodelist=node01\n")
                     # handle.write("#SBATCH --mem=1000\n")
-                    handle.write(f"seqmagick convert {fastq} {fasta}")
-                os.chmod(run_seqmagick, 0o777)
+                    handle.write(f"vsearch --fastq_filter {fastq} --fastaout  {fasta} --fasta_width 0 --notrunclabels "
+                                 f"--threads 4 ")
+                os.chmod(run_fastq_fasta, 0o777)
                 with open(logfile, "a") as handle:
-                    handle.write(f"# running fastq_to_fasta command from file:\n{run_seqmagick}\n")
-                # cmd_seqmagick = f"sbatch -J {seqmagick_job_name} {run_seqmagick}"
-                cmd_seqmagick = f"{run_seqmagick}"
-                subprocess.call(cmd_seqmagick, shell=True)
+                    handle.write(f"# running fastq_to_fasta command from file:\n{run_fastq_fasta}\n")
+                # cmd_seqmagick = f"sbatch -J {fastq_fasta_job_name} {run_fastq_fasta}"
+                cmd_fastq_fasta = f"{run_fastq_fasta}"
+                subprocess.call(cmd_fastq_fasta, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
                 # compress pear if the merged file was successfully converted to a fasta file
                 if fasta.is_file():
@@ -494,8 +504,6 @@ def step_1_run_sample_processing(command_call_processing, logfile):
         fasta_to_derep_name_stem = f"{name_stem}_{primers_code}"
         if len(search_fasta_folder) > 1:
             concated_outfile = pathlib.Path(fasta_folder, f"{fasta_to_derep_name_stem}_concatenated.fasta")
-            print(concated_outfile)
-            input("enter")
             if concated_outfile.is_file():
                 # remove existing file so that you don't accidentally concatenate in duplicate
                 print(f"{concated_outfile}\nalready exists\nthis file will be overwritten")
