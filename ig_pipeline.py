@@ -433,9 +433,9 @@ def step_1_run_sample_processing(command_call_processing, logfile):
                 # create SLURM file to run PEAR on the cluster
                 # Todo: change to nicd version
                 id_prefix = sample_name[3:6]
-                unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4)).lower()
+                unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
                 # set job id
-                pear_job_name = f"{id_prefix}{unique_suffix}"
+                pear_job_name = f"{id_prefix}{unique_suffix}PR"
                 run_pear = pathlib.Path(dir_with_raw_files, "run_pear.sh")
                 with open(run_pear, "w") as handle:
                     # handle.write("#!/bin/sh\n")
@@ -491,9 +491,9 @@ def step_1_run_sample_processing(command_call_processing, logfile):
 
                 # create fastq to fasta SLURM file
                 id_prefix = sample_name[3:6]
-                unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4)).lower()
+                unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
                 # set job id
-                fastq_fasta_job_name = f"{id_prefix}{unique_suffix}"
+                fastq_fasta_job_name = f"{id_prefix}{unique_suffix}Fa"
                 # Todo: change to nicd version
                 run_fastq_fasta = pathlib.Path(merged_folder, "run_convert_to_fasta.sh")
                 with open(run_fastq_fasta, "w") as handle:
@@ -574,9 +574,9 @@ def step_1_run_sample_processing(command_call_processing, logfile):
 
         # dereplicate sequences using vsearch
         id_prefix = name_stem[3:6]
-        unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4)).lower()
+        unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
         # set job id
-        derep_job_name = f"{id_prefix}{unique_suffix}"
+        derep_job_name = f"{id_prefix}{unique_suffix}De"
         # Todo: change to nicd version
         # set dereplicated outfile name
         dereplicated_file = pathlib.Path(derep_folder, f"{fasta_to_derep_name_stem}_unique.fasta")
@@ -619,20 +619,40 @@ def step_2_run_sonar_1(command_call_sonar_1, logfile):
     for item in command_call_sonar_1:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
+        parent = pathlib.Path(dir_with_sonar1_files).parent
+        print(parent)
+        input("enter")
         sonar_version = item[2]
+        with open(logfile, "a") as handle:
+            handle.write(f"# running sonar1 on {sample_name}\n")
 
         # check that only one file in target dir
+        search_derep_fastas = list(dir_with_sonar1_files.glob("*.fasta"))
+        if len(search_derep_fastas) > 1:
+            print(f"multiple fasta files found in {dir_with_sonar1_files}\n"
+                  f"Sonar1 can only run if there is one fasta file in this folder\ntrying next sample")
+            with open(logfile, "a") as handle:
+                handle.write(f"# multiple fasta files in  {dir_with_sonar1_files}\n")
+            continue
+        id_prefix = sample_name[3:6]
+        unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+        # set job id
+        sonar1_job_name = f"{id_prefix}{unique_suffix}S1"
+        # get sonar P1 version specific commands
+        sonar_settings = {"heavy": "some settings", "kappa": "some settings", "lambda": "some settings"}
+        sonar_version_setting = sonar_settings[sonar_version]
 
-        job_name = ''
-
-        if sonar_version == "heavy":
-            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar-P1-H.sh"
-        elif sonar_version == "kappa":
-            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar_light.sh"
-        elif sonar_version == "lambda":
-            cmd = f"sbatch -J {job_name} /home/job_scripts/sonar/annotate/run_sonar_P1-kappa.sh"
-
-        # tar.gz output
+        run_sonar = pathlib.Path(dir_with_sonar1_files, f"run_sonar_P1_{sonar_version}.sh")
+        with open(run_sonar, "w") as handle:
+            # handle.write("#!/bin/sh\n")
+            # handle.write("##SBATCH -w, --nodelist=node01\n")
+            # handle.write("#SBATCH --mem=1000\n\n")
+            # handle.write(sonar_version_setting)
+            handle.write(f"sbatch -J {sonar1_job_name} {run_sonar}")
+        os.chmod(str(run_sonar), 0o777)
+        with open(logfile, "a") as handle:
+            handle.write(f"# running Sonar1 command from file:\n{str(run_sonar)}\n")
+        subprocess.call(run_sonar, shell=True)
 
 
 def step_3_run_sonar_2(command_call_sonar_2, logfile):
@@ -688,12 +708,6 @@ def main(path, settings):
     # make a list of the jobs to run and the settings required and make the required folders
     list_all_settings = extract_settings_make_folders(path, settings_dict)
 
-    # unzip_files(dir_with_files)
-    unzip_files(path, log_file)
-
-    # move files from 0_new_data, into correct directory, if necessary
-    move_raw_data(path, settings_dataframe, log_file)
-
     if not list_all_settings:
         print("No jobs were found in the settings file\nCheck that the file format was correct "
               "and that it contains entries")
@@ -708,24 +722,30 @@ def main(path, settings):
     # only run sample processing if one or more files were specified
     if command_call_processing:
         print("processing samples")
+
+        # unzip_files(dir_with_files)
+        unzip_files(path, log_file)
+
+        # move files from 0_new_data, into correct directory, if necessary
+        move_raw_data(path, settings_dataframe, log_file)
         # get rid of duplicate entries in sample processing list, if present
         command_call_processing = list(set(tuple(x) for x in command_call_processing))
         step_1_run_sample_processing(command_call_processing, log_file)
 
-    # # only run sonar1 if one or more files were specified
-    # if command_call_sonar_1:
-    #     # get rid of duplicate entries in sonar1 list, if present
-    #     dedup_sonar1_call = []
-    #     removed_sonor1_duplicates_check = []
-    #     for item in command_call_sonar_1:
-    #         sample_name = "_".join(item[0].split("_")[:-1])
-    #         sonar1_dir = item[1]
-    #         chain = item[0]
-    #         if sonar1_dir in removed_sonor1_duplicates_check:
-    #             continue
-    #         else:
-    #             removed_sonor1_duplicates_check.append(sonar1_dir)
-    #             dedup_sonar1_call.append([sample_name, sonar1_dir, chain])
+    # only run sonar1 if one or more files were specified
+    if command_call_sonar_1:
+        # get rid of duplicate entries in sonar1 list, if present
+        dedup_sonar1_call = []
+        removed_sonor1_duplicates_check = []
+        for item in command_call_sonar_1:
+            sample_name = "_".join(item[0].split("_")[:-1])
+            sonar1_dir = item[1]
+            chain = item[0]
+            if sonar1_dir in removed_sonor1_duplicates_check:
+                continue
+            else:
+                removed_sonor1_duplicates_check.append(sonar1_dir)
+                dedup_sonar1_call.append([sample_name, sonar1_dir, chain])
     #
     #     step_2_run_sonar_1(command_call_sonar_1)
     #

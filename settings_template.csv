@@ -1,0 +1,7 @@
+sample_name,sonar_1_version,lineage,primer_name,time_point,run_step1,run_step2,run_step3,known_mab_name
+CAP255_4180_080wpi_heavy_C5,heavy,V3_bnab,C5,080wpi,1,1,1,CAP255_C5
+CAP255_4180_080wpi_heavy_C5,heavy,V3_bnab,C5,080wpi,1,1,1,CAP255_G3
+CAP255_4180_080wpi_heavy_GL,heavy,V3_bnab,GL,080wpi,1,1,1,CAP255_C5
+CAP255_4180_080wpi_heavy_GL,heavy,V3_bnab,GL,080wpi,1,1,1,CAP255_G3
+CAP255_4180_080wpi_lambda_VL,lambda,V3_bnab,VL,080wpi,1,1,1,CAP255_C5
+CAP255_4180_080wpi_lambda_VL,lambda,V3_bnab,VL,080wpi,1,1,1,CAP255_G3
