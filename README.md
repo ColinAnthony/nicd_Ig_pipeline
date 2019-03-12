@@ -60,7 +60,28 @@ include an entry for each mAb, as shown in the settings template
     * prepare your settings.csv file, indicating which steps to run on which samples
         * if running additional samples, set previous samples to '0' in the three run_step columns
 * create a folder called `mab_sequences` which contains a fasta file with all the mAb sequencse you will need for sonar P2
- * run the wrapper script:
+    * the names of the sequences must contain fields PID, Primer_name, chain, and either cdr3 or fullab
+    
+    eg:
+    
+        >CAP255_C5_heavy_fullab
+        AGTGAGTGAG...
+        >CAP255_C5_heavy_cdr3
+        AGTGAGTGAG
+        >CAP255_G3_heavy_fullab
+        AGTGAGTGAG...
+        >CAP255_G3_heavy_cdr3
+        AGTGAGTGAG
+        >CAP255_C5_lambda_fullab
+        AGTGAGTGAG...
+        >CAP255_C5_lambda_cdr3
+        AGTGAGTGAG
+        >CAP255_G3_lambda_fullab
+        AGTGAGTGAG...
+        >CAP255_G3_lambda_cdr3
+        AGTGAGTGAG
+
+* run the wrapper script:
     * it is recommened to use `screen` or `nohup` as the run times will be long.
     
     `sudo apt install screen`

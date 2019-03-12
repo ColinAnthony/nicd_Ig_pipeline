@@ -3,15 +3,17 @@
 
     Usage:
          ig_pipeline.py (-p <project_path>) (-s <settings_file>) -f <fasta_file>)
+         ig_pipeline.py (-p <project_path>) (-s <settings_file>) -f <fasta_file>) -r (<run_sonar2_trunc>)
          ig_pipeline.py -h
          ig_pipeline.py -v
 
     Options:
-         -p --path          The path to the project folder, where the folders will be created
-         -s --settings      The path and file name of the settings csv file
-         -f --fasta_file    The path and name of the fasta file with your mAb sequences
-         -v --version       Show the script version number
-         -h --help          Show this screen.
+         -p --path              The path to the project folder, where the folders will be created
+         -s --settings          The path and file name of the settings csv file
+         -f --fasta_file        The path and name of the fasta file with your mAb sequences
+         -r --run_sonar2_trunc  Use this flag only if you have double peaks in your divergence plots
+         -v --version           Show the script version number
+         -h --help              Show this screen.
 """
 import sys
 import os
@@ -167,8 +169,8 @@ def extract_settings_make_folders(path, settings_dict):
         time_point = job_settings["time_point"].lower()
         chain = job_settings["sonar_1_version"].lower()
         primer_name = job_settings["primer_name"].upper()
-        job_list_entry = sample_id, [lineage, time_point, chain], [run_step1, run_step2, run_step3], \
-                         primer_name, known_mab_name
+        job_list_entry = sample_id, [lineage, time_point, chain], [run_step1, run_step2, run_step3], primer_name, \
+                         known_mab_name
         list_all_jobs_to_run.append(job_list_entry)
 
         # make the folders if they don't already exist
@@ -187,13 +189,8 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name):
     :param known_mab_name: (str) the primer name used for target amplification
     :return: None
     """
-
-    # check for 0_new_data folder
-
-
-
-
     known_mab_name = "5_" + known_mab_name
+
     pathlib.Path(path, "scripts").mkdir(mode=0o777, parents=True, exist_ok=True)
 
     pathlib.Path(path, lineage, time_point, chain, "1_raw_data").mkdir(mode=0o777, parents=True, exist_ok=True)
@@ -206,14 +203,14 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name):
                                                                                    exist_ok=True)
     pathlib.Path(path, lineage, time_point, chain, "4_dereplicated", "output").mkdir(mode=0o777, parents=True,
                                                                                      exist_ok=True)
-    pathlib.Path(path, lineage, time_point, chain, known_mab_name, "crdh3", "work").mkdir(mode=0o777, parents=True,
+    pathlib.Path(path, lineage, time_point, chain, known_mab_name, "crd3", "work").mkdir(mode=0o777, parents=True,
                                                                                           exist_ok=True)
-    pathlib.Path(path, lineage, time_point, chain, known_mab_name, "crdh3", "output").mkdir(mode=0o777, parents=True,
+    pathlib.Path(path, lineage, time_point, chain, known_mab_name, "crd3", "output").mkdir(mode=0o777, parents=True,
+                                                                                           exist_ok=True)
+    pathlib.Path(path, lineage, time_point, chain, known_mab_name, "fullmab", "work").mkdir(mode=0o777, parents=True,
                                                                                             exist_ok=True)
-    pathlib.Path(path, lineage, time_point, chain, known_mab_name, "full_ab", "work").mkdir(mode=0o777, parents=True,
-                                                                                            exist_ok=True)
-    pathlib.Path(path, lineage, time_point, chain, known_mab_name, "full_ab", "output").mkdir(mode=0o777, parents=True,
-                                                                                              exist_ok=True)
+    pathlib.Path(path, lineage, time_point, chain, known_mab_name, "fullab", "output").mkdir(mode=0o777, parents=True,
+                                                                                             exist_ok=True)
 
 
 def unzip_files(path, logfile):
@@ -379,7 +376,7 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
         dir_with_raw_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "1_raw_data")
         dir_with_sonar1_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "4_dereplicated")
         chain = job_entry[1][2]
-        primer_name = job_entry[3]
+        # primer_name = job_entry[3]
         known_mab_name = job_entry[4]
         run_steps = job_entry[2]
         if 1 in run_steps:
@@ -390,8 +387,7 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
                     elif i == 1:
                         command_call_sonar_1.append([sample_name, dir_with_sonar1_files, chain])
                     elif i == 2:
-                        command_call_sonar_2.append([sample_name, dir_with_sonar1_files, chain, primer_name,
-                                                     known_mab_name])
+                        command_call_sonar_2.append([sample_name, dir_with_sonar1_files, chain, known_mab_name])
                     else:
                         print("this should not happen\nnumber or run steps larger than expected\n")
                         sys.exit("exiting")
@@ -704,20 +700,26 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
         unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
         # set job id
         sonar1_job_name = f"{id_prefix}{unique_suffix}S1"
+
         # get sonar P1 version specific commands
-        sonar_settings = {"heavy": "some settings", "kappa": "some settings", "lambda": "some settings"}
+        sonar_settings = {"heavy": ["H", "-lib /opt/conda2/pkgs/sonar/germDB/IgHJ.fa "
+                                         "-dlib /opt/conda2/pkgs/sonar/germDB/IgHD.fa "
+                                         "-clib /opt/conda2/pkgs/sonar/germDB/IgHC_CH1.fa -callFinal"],
+                          "kappa": ["K", "-lib /opt/conda2/pkgs/sonar/germDB/IgKJ.fa -noD -noC -callFinal"],
+                          "lambda": ["L","-lib /opt/conda2/pkgs/sonar/germDB/IgLJ.fa -noD -noC -callFinal"]}
         sonar_version_setting = sonar_settings[sonar_version]
 
-        run_sonar = pathlib.Path(project_folder, "scripts", f"run_sonar_P1_{sonar_version}.sh")
-        with open(run_sonar, "w") as handle:
-            # handle.write("#!/bin/sh\n")
-            # handle.write("##SBATCH -w, --nodelist=node01\n")
-            # handle.write("#SBATCH --mem=1000\n\n")
-            # handle.write(sonar_version_setting)
-            handle.write(f"sbatch -J {sonar1_job_name} {run_sonar}")
-        os.chmod(str(run_sonar), 0o777)
+        run_sonar_p1 = pathlib.Path(project_folder, "scripts", f"run_sonar_P1_{sonar_version}.sh")
+        with open(run_sonar_p1, "w") as handle:
+            handle.write("#!/bin/sh\n")
+            handle.write("#SBATCH -w, --nodelist=bio-linux\n")
+            handle.write("#SBATCH --mem=4000\n\n")
+            handle.write(f"python /opt/conda2/pkgs/sonar/annotate/1.1-blast_V.py -locus {sonar_version_setting[0]} "
+                         f"-callJ -jArgs {sonar_version_setting[1]}\n")
+            handle.write(f"sbatch -J {sonar1_job_name} {run_sonar_p1}")
+        os.chmod(str(run_sonar_p1), 0o777)
         with open(logfile, "a") as handle:
-            handle.write(f"# running Sonar1 command from file:\n{str(run_sonar)}\n")
+            handle.write(f"# running Sonar1 command from file:\n{str(run_sonar_p1)}\n")
         try:
             # change into sonar P1 targer directory
             os.chdir(dir_with_sonar1_files)
@@ -732,21 +734,28 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
         os.chdir(project_folder)
 
 
-def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, logfile):
+def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, logfile):
     """
     function to automate calling sonar1 on NGS Ab dereplicated fasta files
     :param command_call_sonar_2: list of samples to run sonar2 on
+    ":param fasta_sequences: (dict) dict of all the mAb fasta sequences (full and crd3)
+    :param run_sonar2_trunc: (Bool) set flag to true to run sonar_trunc
     :param logfile: (str) path and name of the logfile
     :return:
     """
     for item in command_call_sonar_2:
         sample_name = item[0]
-        dir_with_sonar2_files = item[1]
-        parent_dir = dir_with_sonar2_files.parents[3]
-        sonar_version = item[2]
-        primer_name = item[3]
-        known_mab_name = item[4]
-        mab_sequence = fasta_sequences[known_mab_name]
+        dir_with_sonar1_files = item[1]
+        parent_dir = dir_with_sonar1_files.parents[3]
+        chain = item[2]
+        known_mab_name = item[3]
+        target_folder_full_ab = pathlib.Path(f"5_{known_mab_name}", "full_ab")
+        target_folder_crdh3 = pathlib.Path(f"5_{known_mab_name}", "crd3")
+        fullab_name = known_mab_name + f"_{chain}_fullab"
+        cdr3_name = known_mab_name + f"_{chain}_cdr3"
+        mab_sequence_fullab = fasta_sequences[fullab_name]
+        mab_sequence_cdr3 = fasta_sequences[cdr3_name]
+
         # check for mab_sequences folder
         fasta_sequences = pathlib.Path(parent_dir, "mab_sequences")
         if not fasta_sequences.is_dir():
@@ -757,33 +766,91 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, logfile):
             fasta_sequences.mkdir(mode=0o777, parents=True, exist_ok=True)
             sys.exit("exiting")
 
+        # check for Sonar P1 files
+        dir_with_sonar1_work = pathlib.Path(dir_with_sonar1_files, "work")
+        dir_with_sonar1_output = pathlib.Path(dir_with_sonar1_files, "output")
+        for sonar1_dir in [dir_with_sonar1_work, dir_with_sonar1_output]:
+            sonar_p1_search = sonar1_dir.glob("*")
+            if not sonar_p1_search:
+                print(f"No Sonar P1 files detected in: {dir_with_sonar1_files}")
+                sys.exit()
+
         with open(logfile, "a") as handle:
             handle.write(f"running Sonar P1 on {sample_name}\n")
+        to_run = [(target_folder_full_ab, fullab_name, mab_sequence_fullab),
+                  (target_folder_crdh3, cdr3_name, mab_sequence_cdr3)]
+        mab = ["fullab", "cdr3"]
+        for i, (target_folder, mab_name, mab_seq) in enumerate(to_run):
+            # make fasta file for fullab run
+            mab_name_file = f"{item}.fasta"
+            mab_name_file = pathlib.Path(target_folder, mab_name_file)
+            with open(mab_name_file, 'w') as handle:
+                handle.write(f">{mab_name}\n{mab_sequence_fullab}\n")
 
-        known_mab_name_file = ''
-        "#!/bin/sh"
-        "##SBATCH -w, --nodelist=bio-linux"
-        "#SBATCH --mem=26000"
-        "perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl"
-        f"-a {known_mab_name_file} -ap muscle"
+            # make Sonar P2 script
+            if run_sonar2_trunc:
+                sonar_p2_run = f"{known_mab_name}_{mab[i]}_sonar_p2_run_trunc.sh"
+                sonar_p2_run = pathlib.Path(parent_dir, sonar_p2_run)
+                with open(sonar_p2_run, 'w') as handle:
+                    handle.write("#!/bin/sh\n")
+                    handle.write("##SBATCH -w, --nodelist=bio-linux\n")
+                    handle.write("#SBATCH --mem=4000\n")
+                    handle.write(f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl "
+                                 f"-a {mab_name_file} -g /opt/conda2/pkgs/sonar/germDB/IgHKLV_cysTruncated.fa "
+                                 f"-ap muscle\n")
+            else:
+                sonar_p2_run = f"{known_mab_name}_{mab[i]}_sonar_p2_run.sh"
+                with open(sonar_p2_run, 'w') as handle:
+                    handle.write("#!/bin/sh\n")
+                    handle.write("##SBATCH -w, --nodelist=bio-linux\n")
+                    handle.write("#SBATCH --mem=4000\n")
+                    handle.write(f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl "
+                                 f"-a {mab_name_file} -ap muscle\n")
 
-        # check that target dirs are empty
+            # check that target dirs are empty
+            dir_with_sonar2_work = pathlib.Path(target_folder, "work")
+            dir_with_sonar2_output = pathlib.Path(target_folder, "output")
+            for sonar2_dir in [dir_with_sonar2_work, dir_with_sonar2_output]:
+                sonar_p2_search = sonar2_dir.glob("*")
+                if sonar_p2_search:
+                    print(f"Existing Sonar output detected in sonar P2 target folder {item}\ndeleting")
+                    for file in sonar_p2_search:
+                        os.unlink(str(file))
+                # copy files to desired directory
+                cmd_cope_work = f"cp {dir_with_sonar1_work} {target_folder}"
+                cmd_cope_output = f"cp {dir_with_sonar1_output} {target_folder}"
+                # Todo: check that there is enough disk space
 
-        # check that there is enough disk space, send warning if not
+                try:
+                    subprocess.call(cmd_cope_work, shell=True)
+                    subprocess.call(cmd_cope_output, shell=True)
+                except subprocess.CalledProcessError as e:
+                    print(e)
+                    print("There was an error copyting the sonar P1 files to the sonar P2 directory")
+                    with open(logfile, "a") as handle:
+                        handle.write(f"Error copying Sonar P1 output to Sonar P2 folder\n{e}\n")
+                    continue
 
-        # copy files to desired directory
+            # run sonar2
+            os.chdir(target_folder)
+            os.chmod(str(sonar_p2_run), 0o777)
+            try:
+                subprocess.call(sonar_p2_run, shell=True)
+            except subprocess.CalledProcessError as e:
+                print(e)
+                print("There was an error running sonar P2\nTrying next sample")
+                with open(logfile, "a") as handle:
+                    handle.write(f"There was an error running sonar P2\n{e}\n")
+                continue
 
-        # unzip files
 
-        # run sonar2
-
-
-def main(path, settings, fasta_file):
+def main(path, settings, fasta_file, run_sonar2_trunc=False):
     """
     create folder structure for a sequencing project
     :param path: (str) path to where the folders should be made
     :param settings: (str) the path and csv file with the run settings
-    :param fasta_file (str) the path and name of the fasta file with your mAb sequences
+    :param fasta_file: (str) the path and name of the fasta file with your mAb sequences
+    :param run_sonar2_trunc: (Bool) set flag to true to run sonar_trunc
     """
     path = pathlib.Path(path).absolute()
     # change the cwd to project path
@@ -814,7 +881,7 @@ def main(path, settings, fasta_file):
 
     # generate the job lists
     command_call_processing, command_call_sonar_1, command_call_sonar_2 = make_job_lists(path, list_all_settings,
-                                                                                          log_file)
+                                                                                         log_file)
     # only run sample processing if one or more files were specified
     if command_call_processing:
         print("processing samples")
@@ -849,10 +916,11 @@ def main(path, settings, fasta_file):
     if command_call_sonar_2:
         if not fasta_file:
             fasta_sequences = fasta_to_dct(fasta_file)
-            step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, log_file)
+            step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, log_file)
         else:
             print("no fasta file specified for Sonar P2 to run\n")
             sys.exit("exiting")
+        pass
 
     print("Done")
 
@@ -863,4 +931,8 @@ if __name__ == "__main__":
         fasta = args['<fasta_file>']
     else:
         fasta = False
-    main(path=args['<project_path>'], settings=args['<settings_file>'], fasta_file=fasta)
+    if args["-r"]:
+        sonar2_trunc = True
+    else:
+        sonar2_trunc = False
+    main(path=args['<project_path>'], settings=args['<settings_file>'], fasta_file=fasta, run_sonar2_trunc=sonar2_trunc)
