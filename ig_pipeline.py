@@ -79,6 +79,18 @@ def disk_space_checker(path):
     return free_space, percent_free
 
 
+def folder_size_checker(start_path='.'):
+    """
+    function to get the size of a folder on disk, taken
+    from https://stackoverflow.com/questions/1392413/calculating-a-directorys-size-using-python
+    :param start_path:
+    :return:
+    """
+    total_size = sum(os.path.getsize(f) for f in os.listdir(start_path) if os.path.isfile(f))
+
+    return total_size
+
+
 def settings_checker(settings_dataframe):
     """
     function to check the format of the settings csv file
@@ -414,37 +426,40 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
 
     for job_entry in list_all_jobs_to_run:
         sample_name = job_entry[0]
-        dir_with_raw_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "1_raw_data")
-        dir_with_sonar1_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "4_dereplicated")
-        chain = job_entry[1][2]
         # primer_name = job_entry[3]
         known_mab_name = job_entry[4]
         run_steps = job_entry[2]
+        chain = job_entry[1][2]
+        dir_with_raw_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "1_raw_data")
+        dir_with_sonar1_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "4_dereplicated")
+        dir_with_sonar2_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "4_dereplicated",
+                                             f"5_{known_mab_name}", "output")
         if 1 in run_steps:
             for i, step in enumerate(run_steps):
                 if step == 1:
                     if i == 0:
                         command_call_processing.append([sample_name, dir_with_raw_files])
+                        search_raw_path = list(dir_with_raw_files.glob("*.fastq*"))
+                        if search_raw_path:
+                            n += 1
+
                     elif i == 1:
                         command_call_sonar_1.append([sample_name, dir_with_sonar1_files, chain])
+                        search_sonar1_path = list(dir_with_sonar1_files.glob("*.fasta*"))
+                        if search_sonar1_path:
+                            n += 1
                     elif i == 2:
                         command_call_sonar_2.append([sample_name, dir_with_sonar1_files, chain, known_mab_name])
+                        search_sonar2_path = list(dir_with_sonar2_files.glob("*.fasta"))
+                        if search_sonar2_path:
+                            n += 1
                     else:
                         print("this should not happen\nnumber or run steps larger than expected\n")
                         sys.exit("exiting")
         else:
             continue
 
-        # check that files exist in target folder
-        search_raw_path = list(dir_with_raw_files.glob("*.fastq*"))
-        search_sonar1_path = list(dir_with_sonar1_files.glob("*.fasta*"))
-
-        # increment n with the count of files found
-        n += len(search_raw_path)
-        n += len(search_sonar1_path)
-
-    # exit of no files were found
-    print("Checking whether files are in target folder")
+    # exit if no files were found
     if n == 0:
         print("No files found in target directories")
         sys.exit("exiting")
@@ -732,9 +747,14 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
     :param logfile: (str) path and name of the logfile
     :return:
     """
+    gb = (1024 * 1024) * 1024
+
     for item in command_call_sonar_1:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
+        project_folder = dir_with_sonar1_files.parents[-2]
+        print(project_folder)
+        input("enter")
         dir_with_sonar1_work = pathlib.Path(dir_with_sonar1_files, "work")
         dir_with_sonar1_output = pathlib.Path(dir_with_sonar1_files, "output")
 
@@ -769,6 +789,21 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             with open(logfile, "a") as handle:
                 handle.write(f"# multiple fasta files in  {dir_with_sonar1_files}\n")
             continue
+        else:
+            # check that you have enough space
+            file = search_derep_fastas[0]
+            # get for free disk space
+            free_space, percent_free = disk_space_checker(project_folder)
+            fasta_size = os.path.getsize(file) / gb
+            if free_space < fasta_size * 10:
+                print(f"not enough free space to run sonar P1\nFree space is {free_space}Gb"
+                      f"# you expected to need up to {fasta_size * 10}Gb for sonar P1")
+                with open(logfile, "a") as handle:
+                    handle.write(
+                        f"# Not enough free space to sonar P1\nFree space is {free_space}Gb {percent_free}%\n"
+                        f"# you expected to need up to {fasta_size * 10}Gb for sonar P1")
+                sys.exit("exiting")
+
         id_prefix = sample_name[3:6]
         unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
         # set job id
@@ -816,6 +851,8 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
     :param logfile: (str) path and name of the logfile
     :return:
     """
+    gb = (1024 * 1024) * 1024
+
     for item in command_call_sonar_2:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
@@ -881,6 +918,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                                  f"-a {mab_name_file} -ap muscle\n")
 
             # check that target dirs are empty
+            # Todo: check whether files in sonar P2 are the same as sonar P1 files then skip the rm and copy steps
             dir_with_sonar2_work = pathlib.Path(target_folder, "work")
             dir_with_sonar2_output = pathlib.Path(target_folder, "output")
             for sonar2_dir in [dir_with_sonar2_work, dir_with_sonar2_output]:
@@ -889,20 +927,32 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                     print(f"Existing Sonar output detected in sonar P2 target folder {item}\ndeleting")
                     for file in sonar_p2_search:
                         os.unlink(str(file))
-                # copy files to desired directory
-                cmd_cope_work = f"cp {dir_with_sonar1_work} {target_folder}"
-                cmd_cope_output = f"cp {dir_with_sonar1_output} {target_folder}"
-                # Todo: check that there is enough disk space
 
-                try:
-                    subprocess.call(cmd_cope_work, shell=True)
-                    subprocess.call(cmd_cope_output, shell=True)
-                except subprocess.CalledProcessError as e:
-                    print(e)
-                    print("There was an error copyting the sonar P1 files to the sonar P2 directory")
+                # check for free disk space
+                free_space, percent_free = disk_space_checker(parent_dir)
+                sonar_p1_size = round(folder_size_checker(dir_with_sonar1_output)  / gb, 3)
+                if free_space < sonar_p1_size * 3:
+                    print(f"not enough free space to run sonar P2\nFree space is {free_space}Gb"
+                          f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
                     with open(logfile, "a") as handle:
-                        handle.write(f"Error copying Sonar P1 output to Sonar P2 folder\n{e}\n")
-                    continue
+                        handle.write(f"# Not enough free space to sonar P2\n"
+                                     f"Free space is {free_space}Gb {percent_free}%\n"
+                                     f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
+                    sys.exit("exiting")
+                else:
+                    # copy files to desired directory
+                    cmd_cope_work = f"cp {dir_with_sonar1_work} {target_folder}"
+                    cmd_cope_output = f"cp {dir_with_sonar1_output} {target_folder}"
+                    # Todo: check that copied sonar P1 files match originals
+                    try:
+                        subprocess.call(cmd_cope_work, shell=True)
+                        subprocess.call(cmd_cope_output, shell=True)
+                    except subprocess.CalledProcessError as e:
+                        print(e)
+                        print("There was an error copying the sonar P1 files to the sonar P2 directory")
+                        with open(logfile, "a") as handle:
+                            handle.write(f"Error copying Sonar P1 output to Sonar P2 folder\n{e}\n")
+                        continue
 
             # run sonar2
             os.chdir(target_folder)
@@ -995,7 +1045,7 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     if command_call_sonar_2:
         if fasta_file is not None:
             fasta_sequences = fasta_to_dct(fasta_file)
-            step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, log_file)
+            # step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, log_file)
         else:
             print("no fasta file specified for Sonar P2 to run\n")
             sys.exit("exiting")
