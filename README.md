@@ -65,32 +65,50 @@ include an entry for each mAb, as shown in the settings template
     eg:
     
         >CAP255_C5_heavy_fullab
-        AGTGAGTGAG...
+        AGTGAGTGAGAGTGAGTGAG...
         >CAP255_C5_heavy_cdr3
         AGTGAGTGAG
         >CAP255_G3_heavy_fullab
-        AGTGAGTGAG...
+        AGTGAGTGAGAGTGAGTGAG...
         >CAP255_G3_heavy_cdr3
         AGTGAGTGAG
         >CAP255_C5_lambda_fullab
-        AGTGAGTGAG...
+        AGTGAGTGAGAGTGAGTGAG...
         >CAP255_C5_lambda_cdr3
         AGTGAGTGAG
         >CAP255_G3_lambda_fullab
-        AGTGAGTGAG...
+        AGTGAGTGAGAGTGAGTGAG...
         >CAP255_G3_lambda_cdr3
         AGTGAGTGAG
 
 * run the wrapper script:
-    * it is recommened to use `screen` or `nohup` as the run times will be long.
+    * use `screen` or `nohup` as the run times will be long.
     
+        If you need to install screen
     `sudo apt install screen`
     
+    Run:
     `screen -S <job_name>`
     
+    This will start the screen session
+    
+    Now run:     
      `ig_pipeline.py -p <project_path> -s <settings_file>`
- 
- * check the log file to see details of the processes that were run
+    
+    This will start the pipeline.
+    
+    To disconnect from the session (means you can switch your PC off and go home and the pipline will continue running)
+    type: `Ctrl A` and then  `d` to detach from the session
+    
+*  To get a list of screen jobs
+   
+    type: `screen ls`
+    
+* To re-attach to the screen session
+    
+    type: ` screen -S <job_name>`   
+#
+ * check the log file in the project folder to see details of the processes that were run
  * check your output files
  * do your analysis
  

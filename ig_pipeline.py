@@ -1,19 +1,19 @@
-#!/anaconda/bin/python3
+#!/usr/local/bin/python3.6
 """This is a wrapper to automate the NGS nAb processing and analysis pipeline.
 
     Usage:
-         ig_pipeline.py (-p <project_path>) (-s <settings_file>) -f <fasta_file>)
-         ig_pipeline.py (-p <project_path>) (-s <settings_file>) -f <fasta_file>) -r (<run_sonar2_trunc>)
-         ig_pipeline.py -h
-         ig_pipeline.py -v
+        ig_pipeline.py (-p <project_path>) (-s <settings_file>) [-f <fasta_file>] [-r]
+        ig_pipeline.py -h
+        ig_pipeline.py -v
 
     Options:
-         -p --path              The path to the project folder, where the folders will be created
-         -s --settings          The path and file name of the settings csv file
-         -f --fasta_file        The path and name of the fasta file with your mAb sequences
-         -r --run_sonar2_trunc  Use this flag only if you have double peaks in your divergence plots
-         -v --version           Show the script version number
-         -h --help              Show this screen.
+        -p --path               The path to the project folder, where the folders will be created
+        -s --settings           The path and file name of the settings csv file
+        -f --fasta_file         The path and name of the fasta file with your mAb sequences
+        -r --run_sonar2_trunc   Will run the Sonar P2 trunc call
+                                    (Use this flag only if you have double peaks in your divergence plots)
+        -v --version            Show the script version number
+        -h --help               Show this screen.
 """
 import sys
 import os
@@ -27,6 +27,7 @@ from itertools import groupby
 from docopt import docopt
 import pathlib
 import pandas as pd
+import gzip
 
 
 __author__ = 'Colin Anthony'
@@ -64,6 +65,18 @@ def fasta_to_dct(file_name):
         dct[new_key] = v.upper()
 
     return dct
+
+
+def disk_space_checker(path):
+    # check for free disk space
+    disk_space_object = os.statvfs(path)
+    gb = (1024 * 1024) * 1024
+    # always keep a bit of free space for the safety reasons
+    safety_buffer = 10
+    total_space = disk_space_object.f_blocks * disk_space_object.f_frsize / gb - safety_buffer
+    free_space = disk_space_object.f_bfree * disk_space_object.f_frsize / gb - safety_buffer
+    percent_free = round((free_space / total_space) * 100, 2)
+    return free_space, percent_free
 
 
 def settings_checker(settings_dataframe):
@@ -220,6 +233,9 @@ def unzip_files(path, logfile):
     :param logfile: (str) path and name of the logfile
     :return:
     """
+    # Bites to Gb adjustment
+    gb = (1024 * 1024) * 1024
+
     new_data = pathlib.Path(path, "0_new_data")
     if not new_data.is_dir():
         print(f"'0_new_data' folder not found\n"
@@ -229,19 +245,28 @@ def unzip_files(path, logfile):
         new_data.mkdir(mode=0o777, parents=True, exist_ok=True)
         sys.exit("exiting")
 
+    # find zip files
     search_zip = list(new_data.glob("*.zip"))
     if search_zip:
         for file in search_zip:
-            if file.suffix == ".zip":
+            # get for free disk space
+            free_space, percent_free = disk_space_checker(path)
+            # get file size
+            zip_size = os.path.getsize(file) / gb
+            if free_space < zip_size * 5:
+                print(f"not enough free space to unzip\nFree space is {free_space}Gb")
+                with open(logfile, "a") as handle:
+                    handle.write(f"# Not enough free space to unzip\nFree space is {free_space}Gb {percent_free}%\n")
+                sys.exit("exiting")
+            else:
                 print("archived file detected")
-                cmd_jar = f"unzip {file} -d {new_data}"
-                print(cmd_jar)
+                cmd_unzip = f"unzip {file} -d {new_data}"
                 try:
-                    subprocess.call(cmd_jar, shell=True)
+                    subprocess.call(cmd_unzip, shell=True)
                     with open(logfile, "a") as handle:
                         handle.write("# unzipping archive\n")
-                        handle.write(cmd_jar + "\n")
-                        # os.unlink(str(file))
+                        handle.write(cmd_unzip + "\n")
+                        os.unlink(str(file))
                         # log command
                         handle.write("# removing original archive\n")
                 except subprocess.CalledProcessError as e:
@@ -252,7 +277,23 @@ def unzip_files(path, logfile):
                     else:
                         sys.exit("exiting")
 
+    # find .gz files
     search_gz = list(new_data.glob("*.gz"))
+
+    # get needed space to unpack gz files
+    total_un_gz_size = 0
+    # get free space
+    free_space, percent_free = disk_space_checker(path)
+    for file in search_gz:
+        total_un_gz_size += round(int(subprocess.check_output(f"zcat {file} | wc --bytes", shell=True)) / gb, 3)
+    if free_space < total_un_gz_size * 2:
+        print("not enough free space to unzip\n")
+        with open(logfile, "a") as handle:
+            handle.write(f"# Not enough free space to all the gz files\nNeed {total_un_gz_size} just to unzip"
+                         f"\nFree space is {free_space}")
+        sys.exit("exiting")
+
+    # unpack the gz files
     if search_gz:
         for file in search_gz:
             # do replace all '-' with '_' in file name
@@ -266,15 +307,15 @@ def unzip_files(path, logfile):
                 handle.write("# replacing '-' with '_'\n")
                 handle.write(cmd_rename + "\n")
 
-        # Todo: make job name
-        gunzip_job_name = ''
+        # set job id
+        gunzip_job_name = 'gunzip'
         run_gunzip = pathlib.Path(path, "scripts", "run_gunzip.sh")
 
         with open(run_gunzip, "w") as handle:
-            # handle.write("#!/bin/sh\n")
-            # handle.write("#SBATCH -J gzip\n")
-            # handle.write("#SBATCH --mem=1000\n\n")
-            handle.write(f"gunzip {str(new_data)}*.gz")
+            handle.write("#!/bin/sh\n")
+            handle.write("#SBATCH -J gzip\n")
+            handle.write("#SBATCH --mem=1000\n\n")
+            handle.write(f"gunzip {str(new_data)}/*.gz")
         # Todo: change to nicd version
         os.chmod(run_gunzip, 0o777)
         # cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip}"
@@ -415,13 +456,17 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
     return command_call_processing, command_call_sonar_1, command_call_sonar_2
 
 
-def step_1_run_sample_processing(command_call_processing, logfile):
+def step_1_run_sample_processing(path, command_call_processing, logfile):
     """
     function to process the raw fastq files into dereplicated fasta files for sonar1
+    :param path: (str) path to the project folder
     :param command_call_processing: (list of lists) each list contains the sample name and path to the raw data
     :param logfile: (str) path and name of the logfile
     :return: none
     """
+    # Bites to Gb adjustment
+    gb = (1024 * 1024) * 1024
+
     for item in command_call_processing:
         sample_name = item[0]
         with open(logfile, "a") as handle:
@@ -439,8 +484,18 @@ def step_1_run_sample_processing(command_call_processing, logfile):
         search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R*.fastq.gz"))
         if search_zip_raw_files:
             for file in search_zip_raw_files:
-                cmd_gunzip = f"gunzip {file}"
-                subprocess.call(cmd_gunzip, shell=True)
+                # get for free disk space
+                free_space, percent_free = disk_space_checker(path)
+                zip_size = os.path.getsize(file) / gb
+                if free_space < zip_size * 2:
+                    print(f"not enough free space to gunzip\nFree space is {free_space}Gb")
+                    with open(logfile, "a") as handle:
+                        handle.write(
+                            f"# Not enough free space to gunzip\nFree space is {free_space}Gb {percent_free}%\n")
+                    sys.exit("exiting")
+                else:
+                    cmd_gunzip = f"gunzip {file}"
+                    subprocess.call(cmd_gunzip, shell=True)
 
             # remove old merged file
             print(f"removing old merged file for {sample_name}")
@@ -459,6 +514,10 @@ def step_1_run_sample_processing(command_call_processing, logfile):
                 os.unlink(str(file))
 
         search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq"))
+        if not search_raw_files:
+            print(f"No fastq files in target folder for {sample_name}\nTrying next sample\n")
+            continue
+
         for file_R1 in search_raw_files:
             file_R2 = str(file_R1).replace("_R1.fastq", "_R2.fastq")
             file_R2 = pathlib.Path(file_R2)
@@ -467,6 +526,18 @@ def step_1_run_sample_processing(command_call_processing, logfile):
                 print(f"R2 paired file not found\nSkipping this sample: {file_R1}")
                 continue
             else:
+                # get for free disk space
+                free_space, percent_free = disk_space_checker(path)
+                file_size = os.path.getsize(file_R1) / gb * 2
+                if free_space < file_size * 4:
+                    print(f"not enough disk space to process the raw files\nNeed{file_size * 4}Gb\n"
+                          f"you have{free_space}Gb free")
+                    with open(logfile, "a") as handle:
+                        handle.write(
+                            f"# not enough disk space to process the raw files\nNeed {file_size * 4}Gb\n"
+                            f"you have{free_space}Gb free\n")
+                    sys.exit("exiting")
+
                 # if both R1 and R2 files are present, continue with the processing
                 print("running PEAR")
                 pear_outfile = file_R1.name.replace("_R1.fastq", "")
@@ -481,10 +552,10 @@ def step_1_run_sample_processing(command_call_processing, logfile):
                 pear_job_name = f"{id_prefix}{unique_suffix}PR"
                 run_pear = pathlib.Path(dir_with_raw_files, "run_pear.sh")
                 with open(run_pear, "w") as handle:
-                    # handle.write("#!/bin/sh\n")
-                    # handle.write("##SBATCH -w, --nodelist=node01\n")
-                    # handle.write("#SBATCH --mem=1000\n\n")
-                    handle.write(f"pear -f {file_R1} -r {file_R2} -o {merged_file_name} -p 0.001 -j 4 -q 20 -n 300 -u 5")
+                    handle.write("#!/bin/sh\n")
+                    handle.write("##SBATCH -w, --nodelist=node01\n")
+                    handle.write("#SBATCH --mem=1000\n\n")
+                    handle.write(f"pear -f {file_R1} -r {file_R2} -o {merged_file_name} -p 0.001 -j 4 -q 20 -n 300")
                 os.chmod(str(run_pear), 0o777)
                 with open(logfile, "a") as handle:
                     handle.write(f"# running PEAR command from file:\n{run_pear}\n")
@@ -540,9 +611,9 @@ def step_1_run_sample_processing(command_call_processing, logfile):
                 # Todo: change to nicd version
                 run_fastq_fasta = pathlib.Path(merged_folder, "run_convert_to_fasta.sh")
                 with open(run_fastq_fasta, "w") as handle:
-                    # handle.write("#!/bin/sh\n")
-                    # handle.write("##SBATCH -w, --nodelist=node01\n")
-                    # handle.write("#SBATCH --mem=1000\n\n")
+                    handle.write("#!/bin/sh\n")
+                    handle.write("##SBATCH -w, --nodelist=node01\n")
+                    handle.write("#SBATCH --mem=1000\n\n")
                     handle.write(f"vsearch --fastq_filter {fastq} --fastaout  {fasta} --fasta_width 0 --notrunclabels "
                                  f"--threads 4")
                 os.chmod(run_fastq_fasta, 0o777)
@@ -567,10 +638,11 @@ def step_1_run_sample_processing(command_call_processing, logfile):
                     print("could not find the fasta file\nconversion of fastq to fasta might have failed\n")
                     sys.exit("exiting")
 
-    # move fastas to target dir and do dereplication in needed
+    # move fastas to target dir and do dereplication if needed
     with open(logfile, "a") as handle:
         handle.write(f"# dereplicating files\n")
 
+    # collect all the files that will be dereplicated
     files_to_derep_dict = collections.defaultdict(list)
     for item in command_call_processing:
         sample_name = item[0]
@@ -578,10 +650,10 @@ def step_1_run_sample_processing(command_call_processing, logfile):
         parent_path = dir_with_raw_files.parent
         files_to_derep_dict[str(parent_path)].append(sample_name)
 
+    # for each target folder, asign the relevant variables
     for folder, sample_name_list in files_to_derep_dict.items():
         fasta_folder = pathlib.Path(folder, "3_fasta")
         derep_folder = pathlib.Path(folder, "4_dereplicated")
-
         search_fasta_folder = list(pathlib.Path(fasta_folder).glob("*.fasta"))
         primers = []
         name_stem = ''
@@ -593,6 +665,7 @@ def step_1_run_sample_processing(command_call_processing, logfile):
             primers.append(primer)
         primers_code = "_".join(primers)
 
+        # check if you need to concatenate files
         search_fasta_folder = list(pathlib.Path(fasta_folder).glob("*.fasta"))
         fasta_to_derep_name_stem = f"{name_stem}_{primers_code}"
         if len(search_fasta_folder) > 1:
@@ -626,9 +699,9 @@ def step_1_run_sample_processing(command_call_processing, logfile):
         # create fastq to fasta SLURM file
         run_derep = pathlib.Path(fasta_folder, "run_derep.sh")
         with open(run_derep, "w") as handle:
-            # handle.write("#!/bin/sh\n")
-            # handle.write("##SBATCH -w, --nodelist=node01\n")
-            # handle.write("#SBATCH --mem=1000\n\n")
+            handle.write("#!/bin/sh\n")
+            handle.write("##SBATCH -w, --nodelist=node01\n")
+            handle.write("#SBATCH --mem=1000\n\n")
             handle.write(f"vsearch --sizeout --derep_fulllength {file_to_dereplicate} --output {dereplicated_file} "
                          f"--fasta_width 0 --notrunclabels --threads 4 ")
         os.chmod(run_derep, 0o777)
@@ -739,7 +812,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
     function to automate calling sonar1 on NGS Ab dereplicated fasta files
     :param command_call_sonar_2: list of samples to run sonar2 on
     ":param fasta_sequences: (dict) dict of all the mAb fasta sequences (full and crd3)
-    :param run_sonar2_trunc: (Bool) set flag to true to run sonar_trunc
+    :param run_sonar2_trunc: (Bool) True if flag is set, default is False, will run sonar_trunc call if True
     :param logfile: (str) path and name of the logfile
     :return:
     """
@@ -844,7 +917,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                 continue
 
 
-def main(path, settings, fasta_file, run_sonar2_trunc=False):
+def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     """
     create folder structure for a sequencing project
     :param path: (str) path to where the folders should be made
@@ -856,13 +929,19 @@ def main(path, settings, fasta_file, run_sonar2_trunc=False):
     # change the cwd to project path
     os.chdir(path)
 
-    project_name = path.parent
+    # check disk space
+    free_space, percent_free = disk_space_checker(path)
+    print(f"Free disk space remaining: {free_space}Gb ({percent_free}%)")
+
+    # set paths and initialize the log file
+    project_name = path.parts[-1]
     settings = pathlib.Path(settings).absolute()
     settings_dataframe = pd.read_csv(settings, sep=None, engine='python')
     time_stamp = str('{:%Y-%m-%d_%H_%M}'.format(datetime.datetime.now()))
     log_file = pathlib.Path(path, f"{time_stamp}_log_file.txt")
     with open(log_file, "w") as handle:
-        handle.write(f"# start of pipeline run for {project_name}\n")
+        handle.write(f"# start of pipeline run for project: {project_name}\n")
+        handle.write(f"Free space at start = {free_space}Gb ({percent_free}%)\n\n")
     os.chmod(str(log_file), 0o777)
 
     # check that settings file has the correct headings
@@ -893,7 +972,7 @@ def main(path, settings, fasta_file, run_sonar2_trunc=False):
         move_raw_data(path, settings_dataframe, log_file)
         # get rid of duplicate entries in sample processing list, if present
         command_call_processing = list(set(tuple(x) for x in command_call_processing))
-        step_1_run_sample_processing(command_call_processing, log_file)
+        step_1_run_sample_processing(path, command_call_processing, log_file)
 
     # only run sonar1 if one or more files were specified
     if command_call_sonar_1:
@@ -914,7 +993,7 @@ def main(path, settings, fasta_file, run_sonar2_trunc=False):
 
     # only run sonar 2 if one or more files were specified
     if command_call_sonar_2:
-        if not fasta_file:
+        if fasta_file is not None:
             fasta_sequences = fasta_to_dct(fasta_file)
             step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, log_file)
         else:
@@ -927,12 +1006,6 @@ def main(path, settings, fasta_file, run_sonar2_trunc=False):
 
 if __name__ == "__main__":
     args = docopt(__doc__, version='V0.1.0')
-    if args["-f"]:
-        fasta = args['<fasta_file>']
-    else:
-        fasta = False
-    if args["-r"]:
-        sonar2_trunc = True
-    else:
-        sonar2_trunc = False
-    main(path=args['<project_path>'], settings=args['<settings_file>'], fasta_file=fasta, run_sonar2_trunc=sonar2_trunc)
+
+    main(path=args["<project_path>"], settings=args["<settings_file>"], fasta_file=args["<fasta_file>"],
+         run_sonar2_trunc=args["--run_sonar2_trunc"])
