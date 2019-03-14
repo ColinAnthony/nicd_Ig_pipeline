@@ -33,6 +33,41 @@ import pandas as pd
 __author__ = 'Colin Anthony'
 
 
+class dircmp(filecmp.dircmp):
+    """
+    https://stackoverflow.com/questions/4187564/recursive-dircmp-compare-two-
+    directories-to-ensure-they-have-the-same-files-and
+    Compare the content of dir1 and dir2. In contrast with filecmp.dircmp, this
+    subclass compares the content of files with the same path.
+    """
+    def phase3(self):
+        """
+        Find out differences between common files.
+        Ensure we are using content comparison with shallow=False.
+        """
+        fcomp = filecmp.cmpfiles(self.left, self.right, self.common_files, shallow=False)
+        self.same_files, self.diff_files, self.funny_files = fcomp
+
+
+def is_same(dir1, dir2):
+    """
+    https://stackoverflow.com/questions/4187564/recursive-dircmp-compare-two-
+    directories-to-ensure-they-have-the-same-files-and
+    Compare two directory trees content.
+    :param dir1: (str) path to dir 1
+    :param dir2: (str) path to dir 2
+    Return False if they differ, True is they are the same.
+    """
+    compared = dircmp(dir1, dir2)
+    if (compared.left_only or compared.right_only or compared.diff_files
+        or compared.funny_files):
+        return False
+    for subdir in compared.common_dirs:
+        if not is_same(os.path.join(dir1, subdir), os.path.join(dir2, subdir)):
+            return False
+    return True
+
+
 def py3_fasta_iter(fasta_name):
     """
     modified from Brent Pedersen: https://www.biostars.org/p/710/#1412
@@ -89,22 +124,6 @@ def folder_size_checker(start_path='.'):
     total_size = sum(os.path.getsize(f) for f in os.listdir(start_path) if os.path.isfile(f))
 
     return total_size
-
-
-def same_folders(dcmp):
-    """
-    function to check that two dirs are identical
-    taken from
-    https://stackoverflow.com/questions/4187564/recursive-dircmp-compare-two-\
-    directories-to-ensure-they-have-the-same-files-and/24860799
-    :param dcmp: filecmp.dircmp object for two folders
-    :return:
-    """
-    if dcmp.diff_files:
-        return False
-    for sub_dcmp in dcmp.subdirs.values():
-        return same_folders(sub_dcmp)
-    return True
 
 
 def settings_checker(settings_dataframe):
@@ -473,13 +492,11 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
     # exit if no files were found
     if n == 0:
         print("No files found in target directories")
-        for job_entry in list_all_jobs_to_run:
-            project_folder = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2])
-            check_bad_person = list(project_folder.glob("*.fastq*"))
-            if len(check_bad_person) > 0:
-                print("raw data found in project folder but not in '0_new_data' folder\nmove files to '0_new_data'")
-            else:
-                sys.exit("exiting")
+        check_bad_person = list(path.glob("*.fastq*"))
+        if len(check_bad_person) > 0:
+            print("raw data found in project folder but not in '0_new_data' folder\nmove files to '0_new_data'")
+        else:
+            sys.exit("exiting")
     else:
         with open(logfile, "a") as handle:
             handle.write(f"# files found in target folder\n")
@@ -936,8 +953,8 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             dir_with_sonar2_work = pathlib.Path(target_folder, "work")
             dir_with_sonar2_output = pathlib.Path(target_folder, "output")
             # check that target dirs have unmodified sonar P1 output
-            sonar_p1_alread_cp_work = same_folders(filecmp.dircmp(dir_with_sonar1_work, dir_with_sonar2_work))
-            sonar_p1_alread_cp_output = same_folders(filecmp.dircmp(dir_with_sonar1_output, dir_with_sonar2_output))
+            sonar_p1_alread_cp_work = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
+            sonar_p1_alread_cp_output = is_same(dir_with_sonar1_output, dir_with_sonar2_output)
             copy_sonar_p1 = True
             for sonar2_dir in [dir_with_sonar2_work, dir_with_sonar2_output]:
                 sonar_p2_search = sonar2_dir.glob("*")
@@ -977,10 +994,8 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                                 handle.write(f"Error copying Sonar P1 output to Sonar P2 folder\n{e}\n")
                             continue
 
-                        sonar_p1_alread_cp_work = same_folders(
-                            filecmp.dircmp(dir_with_sonar1_work, dir_with_sonar2_work))
-                        sonar_p1_alread_cp_output = same_folders(
-                            filecmp.dircmp(dir_with_sonar1_output, dir_with_sonar2_output))
+                        sonar_p1_alread_cp_work = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
+                        sonar_p1_alread_cp_output = is_same(dir_with_sonar1_output, dir_with_sonar2_output)
                         if not sonar_p1_alread_cp_output and sonar_p1_alread_cp_work:
                             print("Copied files are different from sonar P1 original files\nCopy must have failed")
                             sys.exit("exiting")
