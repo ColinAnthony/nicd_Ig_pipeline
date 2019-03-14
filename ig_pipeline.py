@@ -333,6 +333,9 @@ def unzip_files(path, logfile):
     # get free space
     free_space, percent_free = disk_space_checker(path)
     for file in search_gz:
+        # fix file permissions for output
+        os.chmod(str(file), 0o777)
+        # get expanded file size
         total_un_gz_size += round(int(subprocess.check_output(f"zcat {file} | wc --bytes", shell=True)) / gb, 3)
     if free_space < total_un_gz_size * 2:
         print("not enough free space to unzip\n")
@@ -344,6 +347,8 @@ def unzip_files(path, logfile):
     # unpack the gz files
     if search_gz:
         for file in search_gz:
+            # fix file permissions for output
+            os.chmod(str(file), 0o777)
             # do replace all '-' with '_' in file name
             cmd_rename = f"rename -v '-' '_' {file}"
             os.chmod(str(file), 0o777)
@@ -363,7 +368,7 @@ def unzip_files(path, logfile):
             handle.write(f"gunzip {str(new_data)}/*.gz")
 
         os.chmod(run_gunzip, 0o777)
-        cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip}"
+        cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip} --wait"
         subprocess.call(cmd_gunzip, shell=True)
         # log command
         with open(logfile, "a") as handle:
@@ -383,6 +388,9 @@ def move_raw_data(path, settings_dataframe, logfile):
 
     # rename raw files
     for n, file in enumerate(raw_files):
+        # fix file permissions for output
+        os.chmod(str(file), 0o777)
+
         new_name = str(file).replace("-", "_")
         os.rename(str(file), new_name)
 
@@ -426,6 +434,8 @@ def move_raw_data(path, settings_dataframe, logfile):
                 elif answer == "yes":
                     cmd1 = f"mv {full_name} {destination}"
                     subprocess.call(cmd1, shell=True)
+                    # fix file permissions for output
+                    os.chmod(str(destination), 0o777)
                     check = False
                 else:
                     check = False
@@ -433,10 +443,12 @@ def move_raw_data(path, settings_dataframe, logfile):
 
         else:
             print("moving file")
-            print(full_name, "\n")
+            print(full_name)
 
             cmd = f"mv {full_name} {destination}"
             subprocess.call(cmd, shell=True)
+            # fix file permissions for output
+            os.chmod(str(destination), 0o777)
             with open(logfile, "a") as handle:
                 handle.write(f"# moving files to target folder\n{cmd}\n")
 
@@ -618,14 +630,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     handle.write(f"# running PEAR command from file:\n{run_pear}\n")
                 cmd_pear = f"sbatch -J {pear_job_name} {run_pear} --wait"
                 try:
-                    print("starting pear")
-                    pear_output = subprocess.check_output(cmd_pear, shell=True)
-                    pear_output = pear_output.decode("utf-8")
-                    print(pear_output)
-                    input("enter")
-                    # with open(logfile, "a") as handle:
-                    #     handle.write(pear_output)
-                    #     handle.write("\n")
+                    subprocess.check_output(cmd_pear, shell=True)
+
                 except subprocess.CalledProcessError as e:
                     print(e)
                     print("PEAR encountered an error\ntrying next sample")
@@ -660,7 +666,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     fastq = merged_files_list[0]
                 fasta = f"{str(fastq.stem)}.fasta"
                 fasta = pathlib.Path(fasta_folder, fasta)
-
+                # fix file permissions for output
+                os.chmod(str(fastq), 0o777)
                 # create fastq to fasta SLURM file
                 id_prefix = sample_name[3:6]
                 unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
@@ -673,6 +680,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     handle.write("#SBATCH --mem=1000\n\n")
                     handle.write(f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --fastq_filter {fastq} "
                                  f"--fastaout  {fasta} --fasta_width 0 --notrunclabels --threads 4")
+
                 os.chmod(run_fastq_fasta, 0o777)
                 with open(logfile, "a") as handle:
                     handle.write(f"# running fastq_to_fasta command from file:\n{run_fastq_fasta}\n")
@@ -687,6 +695,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     continue
                 # compress pear if the merged file was successfully converted to a fasta file
                 if fasta.is_file():
+                    # fix file permissions for output
+                    os.chmod(str(fasta), 0o777)
                     # add file to list of fastas to derep (or just be moved to derep folder if only a single fasta)
                     cmd_zip_merged = f"gzip {fastq}"
                     subprocess.call(cmd_zip_merged, shell=True)
@@ -767,6 +777,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
         try:
             derep_output = subprocess.check_output(cmd_derep, shell=True)
+            # fix file permissions for output
+            os.chmod(str(dereplicated_file), 0o777)
             derep_output = derep_output.decode("utf-8")
             with open(logfile, "a") as handle:
                 handle.write(f"{derep_output}\n")
@@ -793,9 +805,6 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
     for item in command_call_sonar_1:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
-        project_folder = dir_with_sonar1_files.parents[-2]
-        print(project_folder)
-        input("enter")
         dir_with_sonar1_work = pathlib.Path(dir_with_sonar1_files, "work")
         dir_with_sonar1_output = pathlib.Path(dir_with_sonar1_files, "output")
 
@@ -833,6 +842,8 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
         else:
             # check that you have enough space
             file = search_derep_fastas[0]
+            # fix file permissions for output
+            os.chmod(str(file), 0o777)
             # get for free disk space
             free_space, percent_free = disk_space_checker(project_folder)
             fasta_size = os.path.getsize(file) / gb
@@ -873,6 +884,10 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             # change into sonar P1 targer directory
             os.chdir(dir_with_sonar1_files)
             subprocess.call(f"sbatch -J {sonar1_job_name} {run_sonar_p1} --wait", shell=True)
+            # fix file permissions for output
+            # todo:
+            # os.chmod(str(file), 0o777)
+
         except subprocess.CalledProcessError as e:
             print(e)
             print("Sonar P1 encountered an error\ntrying next sample")
