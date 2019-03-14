@@ -617,7 +617,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 os.chmod(str(run_pear), 0o777)
                 with open(logfile, "a") as handle:
                     handle.write(f"# running PEAR command from file:\n{run_pear}\n")
-                cmd_pear = f"sbatch --wait -J {pear_job_name} {run_pear}"
+                cmd_pear = f"sbatch -J {pear_job_name} {run_pear} --wait "
                 try:
                     print("starting pear")
                     pear_output = subprocess.check_output(cmd_pear, shell=True)
