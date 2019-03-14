@@ -251,13 +251,6 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name):
     known_mab_name = "5_" + known_mab_name
 
     pathlib.Path(path, "scripts").mkdir(mode=0o777, parents=True, exist_ok=True)
-    new_data = pathlib.Path(path, "0_new_data")
-    if not new_data.is_dir():
-        print(f"'0_new_data' folder not found\n"
-              f"You need to create a folder '0_new_data' in the project folder, ie:\n{new_data}"
-              f"\n and copy your faw data in there, unless it is already in the target '1_raw_data' directory")
-        print("making the folder for you")
-        new_data.mkdir(mode=0o777, parents=True, exist_ok=True)
 
     pathlib.Path(path, lineage, time_point, chain, "1_raw_data").mkdir(mode=0o777, parents=True, exist_ok=True)
 
@@ -277,6 +270,15 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name):
                                                                                             exist_ok=True)
     pathlib.Path(path, lineage, time_point, chain, known_mab_name, "fullab", "output").mkdir(mode=0o777, parents=True,
                                                                                              exist_ok=True)
+
+    new_data = pathlib.Path(path, "0_new_data")
+    if not new_data.is_dir():
+        print(f"'0_new_data' folder not found\n"
+              f"You need to create a folder '0_new_data' in the project folder, ie:\n{new_data}"
+              f"\n and copy your faw data in there, unless it is already in the target '1_raw_data' directory")
+        print("making the folder for you")
+        new_data.mkdir(mode=0o777, parents=True, exist_ok=True)
+        sys.exit("exiting")
 
 
 def unzip_files(path, logfile):
