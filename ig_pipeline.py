@@ -493,7 +493,6 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
 
     # exit if no files were found
     if n == 0:
-        print("No files found in target directories")
         check_bad_person = list(path.glob("*.fastq*"))
         check_good_person = list(pathlib.Path(path, "0_new_data").glob("*.fastq*"))
 
@@ -618,13 +617,16 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 with open(logfile, "a") as handle:
                     handle.write(f"# running PEAR command from file:\n{run_pear}\n")
                 cmd_pear = f"sbatch -J {pear_job_name} {run_pear}"
-                subprocess.call(cmd_pear, shell=True)
                 try:
-                    pear_output = subprocess.check_output(cmd_pear, shell=True)
-                    pear_output = pear_output.decode("utf-8")
-                    with open(logfile, "a") as handle:
-                        handle.write(pear_output)
-                        handle.write("\n")
+                    print("starting pear")
+                    pear_output = os.system(cmd_pear)
+                    # pear_output = subprocess.check_output(cmd_pear, shell=True)
+                    print("pear done?")
+                    input("enter")
+                    # pear_output = pear_output.decode("utf-8")
+                    # with open(logfile, "a") as handle:
+                    #     handle.write(pear_output)
+                    #     handle.write("\n")
                 except subprocess.CalledProcessError as e:
                     print(e)
                     print("PEAR encountered an error\ntrying next sample")
