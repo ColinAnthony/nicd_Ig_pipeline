@@ -605,7 +605,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 id_prefix = sample_name[3:6]
                 unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
                 # set job id
-                pear_job_name = f"{id_prefix}{unique_suffix}PR"
+                # pear_job_name = f"{id_prefix}{unique_suffix}PR"
+                pear_job_name = f"123456"
                 run_pear = pathlib.Path(dir_with_raw_files, "run_pear.sh")
                 with open(run_pear, "w") as handle:
                     handle.write("#!/bin/sh\n")
