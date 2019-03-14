@@ -24,6 +24,7 @@ import random
 import string
 from itertools import groupby
 import pathlib
+import filecmp
 # external libraries
 from docopt import docopt
 import pandas as pd
@@ -88,6 +89,22 @@ def folder_size_checker(start_path='.'):
     total_size = sum(os.path.getsize(f) for f in os.listdir(start_path) if os.path.isfile(f))
 
     return total_size
+
+
+def same_folders(dcmp):
+    """
+    function to check that two dirs are identical
+    taken from
+    https://stackoverflow.com/questions/4187564/recursive-dircmp-compare-two-\
+    directories-to-ensure-they-have-the-same-files-and/24860799
+    :param dcmp: filecmp.dircmp object for two folders
+    :return:
+    """
+    if dcmp.diff_files:
+        return False
+    for sub_dcmp in dcmp.subdirs.values():
+        return same_folders(sub_dcmp)
+    return True
 
 
 def settings_checker(settings_dataframe):
@@ -317,7 +334,6 @@ def unzip_files(path, logfile):
             with open(logfile, "a") as handle:
                 handle.write("# replacing '-' with '_'\n")
                 handle.write(cmd_rename + "\n")
-
         # set job id
         gunzip_job_name = 'gunzip'
         run_gunzip = pathlib.Path(path, "scripts", "run_gunzip.sh")
@@ -329,8 +345,7 @@ def unzip_files(path, logfile):
             handle.write(f"gunzip {str(new_data)}/*.gz")
         # Todo: change to nicd version
         os.chmod(run_gunzip, 0o777)
-        # cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip}"
-        cmd_gunzip = f"{run_gunzip}"
+        cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip}"
         subprocess.call(cmd_gunzip, shell=True)
         # log command
         with open(logfile, "a") as handle:
@@ -461,7 +476,13 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
     # exit if no files were found
     if n == 0:
         print("No files found in target directories")
-        sys.exit("exiting")
+        for job_entry in list_all_jobs_to_run:
+            project_folder = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2])
+            check_bad_person = list(project_folder.glob("*.fastq*"))
+            if len(check_bad_person) > 0:
+                print("raw data found in project folder but not in '0_new_data' folder\nmove files to '0_new_data'")
+            else:
+                sys.exit("exiting")
     else:
         with open(logfile, "a") as handle:
             handle.write(f"# files found in target folder\n")
@@ -532,17 +553,17 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             print(f"No fastq files in target folder for {sample_name}\nTrying next sample\n")
             continue
 
-        for file_R1 in search_raw_files:
-            file_R2 = str(file_R1).replace("_R1.fastq", "_R2.fastq")
-            file_R2 = pathlib.Path(file_R2)
+        for file_r1 in search_raw_files:
+            file_r2 = str(file_r1).replace("_R1.fastq", "_R2.fastq")
+            file_r2 = pathlib.Path(file_r2)
             # if can't find the matched paired R2 file, skip and go to next R1 file
-            if not file_R2.is_file():
-                print(f"R2 paired file not found\nSkipping this sample: {file_R1}")
+            if not file_r2.is_file():
+                print(f"R2 paired file not found\nSkipping this sample: {file_r1}")
                 continue
             else:
                 # get for free disk space
                 free_space, percent_free = disk_space_checker(path)
-                file_size = os.path.getsize(file_R1) / gb * 2
+                file_size = os.path.getsize(file_r1) / gb * 2
                 if free_space < file_size * 4:
                     print(f"not enough disk space to process the raw files\nNeed{file_size * 4}Gb\n"
                           f"you have{free_space}Gb free")
@@ -554,7 +575,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
                 # if both R1 and R2 files are present, continue with the processing
                 print("running PEAR")
-                pear_outfile = file_R1.name.replace("_R1.fastq", "")
+                pear_outfile = file_r1.name.replace("_R1.fastq", "")
                 pear_outfile = f"{pear_outfile}"
                 merged_file_name = pathlib.Path(merged_folder, pear_outfile)
 
@@ -569,13 +590,13 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=node01\n")
                     handle.write("#SBATCH --mem=1000\n\n")
-                    handle.write(f"pear -f {file_R1} -r {file_R2} -o {merged_file_name} -p 0.001 -j 4 -q 20 -n 300")
+                    handle.write(f"/opt/conda2/pkgs/pear-0.9.6-2/bin/pear -f {file_r1} -r {file_r2} "
+                                 f"-o {merged_file_name} -p 0.001 -j 4 -q 20 -n 300")
                 os.chmod(str(run_pear), 0o777)
                 with open(logfile, "a") as handle:
                     handle.write(f"# running PEAR command from file:\n{run_pear}\n")
-                # cmd_pear = f"sbatch -J {pear_job_name} {run_pear}"
-                cmd_pear = f"{run_pear}"
-                # subprocess.call(cmd_pear, shell=True)
+                cmd_pear = f"sbatch -J {pear_job_name} {run_pear}"
+                subprocess.call(cmd_pear, shell=True)
                 try:
                     pear_output = subprocess.check_output(cmd_pear, shell=True)
                     pear_output = pear_output.decode("utf-8")
@@ -592,7 +613,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 # compress 1_raw_data if the merging was successful
                 merged_files_list = list(pathlib.Path(merged_folder).glob(f"{sample_name}.assembled.fastq"))
                 if merged_files_list:
-                    cmd_zip = f"gzip {file_R1} {file_R2}"
+                    cmd_zip = f"gzip {file_r1} {file_r2}"
                     subprocess.call(cmd_zip, shell=True)
 
                 # remove unmerged files
@@ -628,13 +649,12 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=node01\n")
                     handle.write("#SBATCH --mem=1000\n\n")
-                    handle.write(f"vsearch --fastq_filter {fastq} --fastaout  {fasta} --fasta_width 0 --notrunclabels "
-                                 f"--threads 4")
+                    handle.write(f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --fastq_filter {fastq} "
+                                 f"--fastaout  {fasta} --fasta_width 0 --notrunclabels --threads 4")
                 os.chmod(run_fastq_fasta, 0o777)
                 with open(logfile, "a") as handle:
                     handle.write(f"# running fastq_to_fasta command from file:\n{run_fastq_fasta}\n")
-                # cmd_fastq_fasta = f"sbatch -J {fastq_fasta_job_name} {run_fastq_fasta}"
-                cmd_fastq_fasta = f"{run_fastq_fasta}"
+                cmd_fastq_fasta = f"sbatch -J {fastq_fasta_job_name} {run_fastq_fasta}"
                 try:
                     subprocess.call(cmd_fastq_fasta, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except subprocess.CalledProcessError as e:
@@ -707,7 +727,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
         # set job id
         derep_job_name = f"{id_prefix}{unique_suffix}De"
-        # Todo: change to nicd version
         # set dereplicated outfile name
         dereplicated_file = pathlib.Path(derep_folder, f"{fasta_to_derep_name_stem}_unique.fasta")
         # create fastq to fasta SLURM file
@@ -716,13 +735,14 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             handle.write("#!/bin/sh\n")
             handle.write("##SBATCH -w, --nodelist=node01\n")
             handle.write("#SBATCH --mem=1000\n\n")
-            handle.write(f"vsearch --sizeout --derep_fulllength {file_to_dereplicate} --output {dereplicated_file} "
-                         f"--fasta_width 0 --notrunclabels --threads 4 ")
+            handle.write(f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --sizeout --derep_fulllength "
+                         f"{file_to_dereplicate} --output {dereplicated_file} --fasta_width 0 "
+                         f"--notrunclabels --threads 4 ")
         os.chmod(run_derep, 0o777)
         with open(logfile, "a") as handle:
             handle.write(f"# running dereplication command from file:\n{str(file_to_dereplicate)}\n")
-        # cmd_derep = f"sbatch -J {derep_job_name} {run_derep}"
-        cmd_derep = f"{run_derep}"
+        cmd_derep = f"sbatch -J {derep_job_name} {run_derep}"
+
         try:
             derep_output = subprocess.check_output(cmd_derep, shell=True)
             derep_output = derep_output.decode("utf-8")
@@ -813,7 +833,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
                                          "-dlib /opt/conda2/pkgs/sonar/germDB/IgHD.fa "
                                          "-clib /opt/conda2/pkgs/sonar/germDB/IgHC_CH1.fa -callFinal"],
                           "kappa": ["K", "-lib /opt/conda2/pkgs/sonar/germDB/IgKJ.fa -noD -noC -callFinal"],
-                          "lambda": ["L","-lib /opt/conda2/pkgs/sonar/germDB/IgLJ.fa -noD -noC -callFinal"]}
+                          "lambda": ["L", "-lib /opt/conda2/pkgs/sonar/germDB/IgLJ.fa -noD -noC -callFinal"]}
         sonar_version_setting = sonar_settings[sonar_version]
 
         run_sonar_p1 = pathlib.Path(project_folder, "scripts", f"run_sonar_P1_{sonar_version}.sh")
@@ -821,7 +841,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             handle.write("#!/bin/sh\n")
             handle.write("#SBATCH -w, --nodelist=bio-linux\n")
             handle.write("#SBATCH --mem=4000\n\n")
-            handle.write(f"python /opt/conda2/pkgs/sonar/annotate/1.1-blast_V.py -locus {sonar_version_setting[0]} "
+            handle.write(f"python2 /opt/conda2/pkgs/sonar/annotate/1.1-blast_V.py -locus {sonar_version_setting[0]} "
                          f"-callJ -jArgs {sonar_version_setting[1]}\n")
             handle.write(f"sbatch -J {sonar1_job_name} {run_sonar_p1}")
         os.chmod(str(run_sonar_p1), 0o777)
@@ -847,6 +867,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
     :param command_call_sonar_2: list of samples to run sonar2 on
     ":param fasta_sequences: (dict) dict of all the mAb fasta sequences (full and crd3)
     :param run_sonar2_trunc: (Bool) True if flag is set, default is False, will run sonar_trunc call if True
+    :param fasta_sequences: (dict) dict containing key = seq name, value = sequence for all known mAb sequences
     :param logfile: (str) path and name of the logfile
     :return:
     """
@@ -903,56 +924,71 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                 with open(sonar_p2_run, 'w') as handle:
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=bio-linux\n")
-                    handle.write("#SBATCH --mem=4000\n")
+                    handle.write("#SBATCH --mem=4000\n\n")
                     handle.write(f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl "
                                  f"-a {mab_name_file} -g /opt/conda2/pkgs/sonar/germDB/IgHKLV_cysTruncated.fa "
-                                 f"-ap muscle\n")
+                                 f"-ap muscle -t 4\n")
             else:
                 sonar_p2_run = f"{known_mab_name}_{mab[i]}_sonar_p2_run.sh"
                 with open(sonar_p2_run, 'w') as handle:
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=bio-linux\n")
-                    handle.write("#SBATCH --mem=4000\n")
+                    handle.write("#SBATCH --mem=4000\n\n")
                     handle.write(f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl "
-                                 f"-a {mab_name_file} -ap muscle\n")
+                                 f"-a {mab_name_file} -ap muscle -t 4\n")
 
             # check that target dirs are empty
-            # Todo: check whether files in sonar P2 are the same as sonar P1 files then skip the rm and copy steps
             dir_with_sonar2_work = pathlib.Path(target_folder, "work")
             dir_with_sonar2_output = pathlib.Path(target_folder, "output")
+            # check that target dirs have unmodified sonar P1 output
+            sonar_p1_alread_cp_work = same_folders(filecmp.dircmp(dir_with_sonar1_work, dir_with_sonar2_work))
+            sonar_p1_alread_cp_output = same_folders(filecmp.dircmp(dir_with_sonar1_output, dir_with_sonar2_output))
+            copy_sonar_p1 = True
             for sonar2_dir in [dir_with_sonar2_work, dir_with_sonar2_output]:
                 sonar_p2_search = sonar2_dir.glob("*")
                 if sonar_p2_search:
-                    print(f"Existing Sonar output detected in sonar P2 target folder {item}\ndeleting")
-                    for file in sonar_p2_search:
-                        os.unlink(str(file))
+                    if sonar_p1_alread_cp_work and sonar_p1_alread_cp_output:
+                        print("unmodified sonar P1 output found in sonar P2 targer folder\nNot re-copying the files")
+                        copy_sonar_p1 = False
+                    else:
+                        print(f"Modified sonar P1 output detected in sonar P2 target folder {item}\ndeleting files")
+                        for file in sonar_p2_search:
+                            os.unlink(str(file))
 
-                # check for free disk space
-                free_space, percent_free = disk_space_checker(parent_dir)
-                sonar_p1_size = round(folder_size_checker(dir_with_sonar1_output)  / gb, 3)
-                if free_space < sonar_p1_size * 3:
-                    print(f"not enough free space to run sonar P2\nFree space is {free_space}Gb"
-                          f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# Not enough free space to sonar P2\n"
-                                     f"Free space is {free_space}Gb {percent_free}%\n"
-                                     f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
-                    sys.exit("exiting")
                 else:
-                    # copy files to desired directory
-                    cmd_cope_work = f"cp {dir_with_sonar1_work} {target_folder}"
-                    cmd_cope_output = f"cp {dir_with_sonar1_output} {target_folder}"
-                    # Todo: check that copied sonar P1 files match originals
-                    try:
-                        subprocess.call(cmd_cope_work, shell=True)
-                        subprocess.call(cmd_cope_output, shell=True)
-                    except subprocess.CalledProcessError as e:
-                        print(e)
-                        print("There was an error copying the sonar P1 files to the sonar P2 directory")
-                        with open(logfile, "a") as handle:
-                            handle.write(f"Error copying Sonar P1 output to Sonar P2 folder\n{e}\n")
-                        continue
+                    # if sonar P1 output not already (unmodified) in target dir
+                    if copy_sonar_p1:
+                        # check for free disk space
+                        free_space, percent_free = disk_space_checker(parent_dir)
+                        sonar_p1_size = round(folder_size_checker(dir_with_sonar1_output) / gb, 3)
+                        if free_space < sonar_p1_size * 3:
+                            print(f"not enough free space to run sonar P2\nFree space is {free_space}Gb"
+                                  f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
+                            with open(logfile, "a") as handle:
+                                handle.write(f"# Not enough free space to sonar P2\n"
+                                             f"Free space is {free_space}Gb {percent_free}%\n"
+                                             f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
+                            sys.exit("exiting")
+                        # copy files to desired directory
+                        cmd_cope_work = f"cp {dir_with_sonar1_work} {target_folder}"
+                        cmd_cope_output = f"cp {dir_with_sonar1_output} {target_folder}"
+                        try:
+                            subprocess.call(cmd_cope_work, shell=True)
+                            subprocess.call(cmd_cope_output, shell=True)
+                        except subprocess.CalledProcessError as e:
+                            print(e)
+                            print("There was an error copying the sonar P1 files to the sonar P2 directory")
+                            with open(logfile, "a") as handle:
+                                handle.write(f"Error copying Sonar P1 output to Sonar P2 folder\n{e}\n")
+                            continue
 
+                        sonar_p1_alread_cp_work = same_folders(
+                            filecmp.dircmp(dir_with_sonar1_work, dir_with_sonar2_work))
+                        sonar_p1_alread_cp_output = same_folders(
+                            filecmp.dircmp(dir_with_sonar1_output, dir_with_sonar2_output))
+                        if not sonar_p1_alread_cp_output and sonar_p1_alread_cp_work:
+                            print("Copied files are different from sonar P1 original files\nCopy must have failed")
+                            sys.exit("exiting")
             # run sonar2
             os.chdir(target_folder)
             os.chmod(str(sonar_p2_run), 0o777)
