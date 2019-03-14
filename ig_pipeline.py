@@ -251,6 +251,13 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name):
     known_mab_name = "5_" + known_mab_name
 
     pathlib.Path(path, "scripts").mkdir(mode=0o777, parents=True, exist_ok=True)
+    new_data = pathlib.Path(path, "0_new_data")
+    if not new_data.is_dir():
+        print(f"'0_new_data' folder not found\n"
+              f"You need to create a folder '0_new_data' in the project folder, ie:\n{new_data}"
+              f"\n and copy your faw data in there, unless it is already in the target '1_raw_data' directory")
+        print("making the folder for you")
+        new_data.mkdir(mode=0o777, parents=True, exist_ok=True)
 
     pathlib.Path(path, lineage, time_point, chain, "1_raw_data").mkdir(mode=0o777, parents=True, exist_ok=True)
 
@@ -283,13 +290,6 @@ def unzip_files(path, logfile):
     gb = (1024 * 1024) * 1024
 
     new_data = pathlib.Path(path, "0_new_data")
-    if not new_data.is_dir():
-        print(f"'0_new_data' folder not found\n"
-              f"You need to create a folder '0_new_data' in the project folder, ie:\n{new_data}"
-              f"\n and copy your data in there")
-        print("making the folder for you")
-        new_data.mkdir(mode=0o777, parents=True, exist_ok=True)
-        sys.exit("exiting")
 
     # find zip files
     search_zip = list(new_data.glob("*.zip"))
@@ -493,6 +493,8 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
     if n == 0:
         print("No files found in target directories")
         check_bad_person = list(path.glob("*.fastq*"))
+        check_good_person = list(pathlib.Path(path, "0_new_data").glob("*.fastq*"))
+
         if len(check_bad_person) > 0:
             print("raw data found in project folder but not in '0_new_data' folder\nmove files to '0_new_data'")
         else:
