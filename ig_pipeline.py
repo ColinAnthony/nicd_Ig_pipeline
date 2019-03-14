@@ -626,7 +626,9 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                                  f"-o {merged_file_name} -p 0.001 -j 4 -q 20 -n 300")
                 os.chmod(str(run_pear), 0o777)
                 with open(logfile, "a") as handle:
-                    handle.write(f"# running PEAR command from file:\n{run_pear}\n")
+                    handle.write(f"# running PEAR command from file:\n{run_pear}\n"
+                                 f"/opt/conda2/pkgs/pear-0.9.6-2/bin/pear -f {file_r1} -r {file_r2} "
+                                 f"-o {merged_file_name} -p 0.001 -j 4 -q 20 -n 300\n")
                 cmd_pear = f"sbatch -J {pear_job_name} {run_pear} --wait"
                 try:
                     print("running PEAR")
@@ -641,6 +643,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
                 # compress 1_raw_data if the merging was successful
                 merged_files_list = list(pathlib.Path(merged_folder).glob(f"{sample_name}.assembled.fastq"))
+                print(f"no merged files found in {merged_files_list}")
                 if merged_files_list:
                     print("gzipping raw files")
                     cmd_zip = f"gzip {file_r1} {file_r2}"
@@ -649,6 +652,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     print(f"no merged files found in {merged_files_list}")
 
                 # remove unmerged files
+                print("removing unmerged files")
                 unassmebled_search = pathlib.Path(merged_folder).glob(f"{sample_name}*unassembled*.fastq")
                 discarded_search = pathlib.Path(merged_folder).glob(f"{sample_name}*discarded.fastq")
                 for file in unassmebled_search:
@@ -658,6 +662,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     os.unlink(str(file))
 
                 # convert to fasta
+                print("converting fastq to fasta")
                 if len(merged_files_list) > 1:
                     # this should not be possible, since any existing file should have been overwritten
                     print(f"multiple merged files found for this sample:\n{merged_files_list}\n")
@@ -667,6 +672,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     sys.exit("exiting")
                 else:
                     fastq = merged_files_list[0]
+
                 fasta = f"{str(fastq.stem)}.fasta"
                 fasta = pathlib.Path(fasta_folder, fasta)
                 # fix file permissions for output
@@ -701,6 +707,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     # fix file permissions for output
                     os.chmod(str(fasta), 0o666)
                     # add file to list of fastas to derep (or just be moved to derep folder if only a single fasta)
+                    print("compressing merged fastq file")
                     cmd_zip_merged = f"gzip {fastq}"
                     subprocess.call(cmd_zip_merged, shell=True)
                 else:
@@ -738,6 +745,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         search_fasta_folder = list(pathlib.Path(fasta_folder).glob("*.fasta"))
         fasta_to_derep_name_stem = f"{name_stem}_{primers_code}"
         if len(search_fasta_folder) > 1:
+            print("concatenating multiple merged.fasta files")
             concated_outfile = pathlib.Path(fasta_folder, f"{fasta_to_derep_name_stem}_concatenated.fasta")
             if concated_outfile.is_file():
                 # remove existing file so that you don't accidentally concatenate in duplicate
@@ -758,6 +766,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             continue
 
         # dereplicate sequences using vsearch
+        print("dereplicating fasta file")
         id_prefix = name_stem[3:6]
         unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
         # set job id
@@ -790,6 +799,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             continue
         # remove non-dereplicated file if you had to concatenate multiple files
         for file in pathlib.Path(fasta_folder).glob(f"*_concatenated.fasta"):
+            print("removing concatenated fasta file")
             os.unlink(str(file))
 
 
