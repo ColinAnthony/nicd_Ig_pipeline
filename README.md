@@ -7,7 +7,6 @@ This script depends on:
     python3.6 or later (https://www.anaconda.com/distribution/)
     python libraries:
         docopt   (conda install docopt)
-        pathlib  (conda install pathlib)
         pandas   (conda install pandas)
     vsearch (https://github.com/torognes/vsearch)
     PEAR (https://cme.h-its.org/exelixis/web/software/pear/)

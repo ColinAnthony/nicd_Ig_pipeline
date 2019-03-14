@@ -1,5 +1,5 @@
 #!/usr/local/bin/python3.6
-"""This is a wrapper to automate the NGS nAb processing and analysis pipeline.
+"""This is a wrapper to automate the running of the NGS nAb processing and analysis pipeline on their cluster.
 
     Usage:
         ig_pipeline.py (-p <project_path>) (-s <settings_file>) [-f <fasta_file>] [-r]
@@ -23,11 +23,10 @@ import datetime
 import random
 import string
 from itertools import groupby
+import pathlib
 # external libraries
 from docopt import docopt
-import pathlib
 import pandas as pd
-import gzip
 
 
 __author__ = 'Colin Anthony'
