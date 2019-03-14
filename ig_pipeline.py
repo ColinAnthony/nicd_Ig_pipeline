@@ -210,8 +210,7 @@ def extract_settings_make_folders(path, settings_dict):
         time_point = job_settings["time_point"].lower()
         chain = job_settings["sonar_1_version"].lower()
         primer_name = job_settings["primer_name"].upper()
-        job_list_entry = sample_id, [lineage, time_point, chain], [run_step1, run_step2, run_step3], primer_name, \
-                         known_mab_name
+        job_list_entry = sample_id, [lineage, time_point, chain], [run_step1, run_step2, run_step3], primer_name, known_mab_name
         list_all_jobs_to_run.append(job_list_entry)
 
         # make the folders if they don't already exist
@@ -245,7 +244,7 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name):
     pathlib.Path(path, lineage, time_point, chain, "4_dereplicated", "output").mkdir(mode=0o777, parents=True,
                                                                                      exist_ok=True)
     pathlib.Path(path, lineage, time_point, chain, known_mab_name, "crd3", "work").mkdir(mode=0o777, parents=True,
-                                                                                          exist_ok=True)
+                                                                                         exist_ok=True)
     pathlib.Path(path, lineage, time_point, chain, known_mab_name, "crd3", "output").mkdir(mode=0o777, parents=True,
                                                                                            exist_ok=True)
     pathlib.Path(path, lineage, time_point, chain, known_mab_name, "fullmab", "work").mkdir(mode=0o777, parents=True,
@@ -325,9 +324,7 @@ def unzip_files(path, logfile):
     if search_gz:
         for file in search_gz:
             # do replace all '-' with '_' in file name
-            # Todo: change to nicd version of rename
-            # cmd = f"rename -v '-' '_' {file}"
-            cmd_rename = f"rename 's/-/_/g' {file}"
+            cmd_rename = f"rename -v '-' '_' {file}"
             os.chmod(str(file), 0o777)
             subprocess.call(cmd_rename, shell=True)
             # log command
@@ -343,7 +340,7 @@ def unzip_files(path, logfile):
             handle.write("#SBATCH -J gzip\n")
             handle.write("#SBATCH --mem=1000\n\n")
             handle.write(f"gunzip {str(new_data)}/*.gz")
-        # Todo: change to nicd version
+
         os.chmod(run_gunzip, 0o777)
         cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip}"
         subprocess.call(cmd_gunzip, shell=True)
@@ -580,7 +577,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 merged_file_name = pathlib.Path(merged_folder, pear_outfile)
 
                 # create SLURM file to run PEAR on the cluster
-                # Todo: change to nicd version
                 id_prefix = sample_name[3:6]
                 unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
                 # set job id
@@ -643,7 +639,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
                 # set job id
                 fastq_fasta_job_name = f"{id_prefix}{unique_suffix}Fa"
-                # Todo: change to nicd version
                 run_fastq_fasta = pathlib.Path(merged_folder, "run_convert_to_fasta.sh")
                 with open(run_fastq_fasta, "w") as handle:
                     handle.write("#!/bin/sh\n")
@@ -1080,7 +1075,7 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     if command_call_sonar_2:
         if fasta_file is not None:
             fasta_sequences = fasta_to_dct(fasta_file)
-            # step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, log_file)
+            step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, log_file)
         else:
             print("no fasta file specified for Sonar P2 to run\n")
             sys.exit("exiting")
