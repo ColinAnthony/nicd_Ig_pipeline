@@ -620,6 +620,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 try:
                     print("starting pear")
                     pear_output = os.system(cmd_pear)
+                    os.wait()
+
                     # pear_output = subprocess.check_output(cmd_pear, shell=True)
                     print("pear done?")
                     input("enter")
