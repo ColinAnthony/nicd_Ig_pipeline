@@ -608,7 +608,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     sys.exit("exiting")
 
                 # if both R1 and R2 files are present, continue with the processing
-                print("running PEAR")
                 pear_outfile = file_r1.name.replace("_R1.fastq", "")
                 pear_outfile = f"{pear_outfile}"
                 merged_file_name = pathlib.Path(merged_folder, pear_outfile)
@@ -630,7 +629,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     handle.write(f"# running PEAR command from file:\n{run_pear}\n")
                 cmd_pear = f"sbatch -J {pear_job_name} {run_pear} --wait"
                 try:
-                    subprocess.check_output(cmd_pear, shell=True)
+                    print("running PEAR")
+                    subprocess.call(cmd_pear, shell=True)
 
                 except subprocess.CalledProcessError as e:
                     print(e)
@@ -642,8 +642,11 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 # compress 1_raw_data if the merging was successful
                 merged_files_list = list(pathlib.Path(merged_folder).glob(f"{sample_name}.assembled.fastq"))
                 if merged_files_list:
+                    print("gzipping raw files")
                     cmd_zip = f"gzip {file_r1} {file_r2}"
                     subprocess.call(cmd_zip, shell=True)
+                else:
+                    print(f"no merged files found in {merged_files_list}")
 
                 # remove unmerged files
                 unassmebled_search = pathlib.Path(merged_folder).glob(f"{sample_name}*unassembled*.fastq")
@@ -667,7 +670,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 fasta = f"{str(fastq.stem)}.fasta"
                 fasta = pathlib.Path(fasta_folder, fasta)
                 # fix file permissions for output
-                os.chmod(str(fastq), 0o777)
+                os.chmod(str(fastq), 0o666)
                 # create fastq to fasta SLURM file
                 id_prefix = sample_name[3:6]
                 unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
@@ -696,7 +699,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 # compress pear if the merged file was successfully converted to a fasta file
                 if fasta.is_file():
                     # fix file permissions for output
-                    os.chmod(str(fasta), 0o777)
+                    os.chmod(str(fasta), 0o666)
                     # add file to list of fastas to derep (or just be moved to derep folder if only a single fasta)
                     cmd_zip_merged = f"gzip {fastq}"
                     subprocess.call(cmd_zip_merged, shell=True)
@@ -776,12 +779,9 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         cmd_derep = f"sbatch -J {derep_job_name} {run_derep} --wait"
 
         try:
-            derep_output = subprocess.check_output(cmd_derep, shell=True)
+            subprocess.check_output(cmd_derep, shell=True)
             # fix file permissions for output
-            os.chmod(str(dereplicated_file), 0o777)
-            derep_output = derep_output.decode("utf-8")
-            with open(logfile, "a") as handle:
-                handle.write(f"{derep_output}\n")
+            os.chmod(str(dereplicated_file), 0o666)
         except subprocess.CalledProcessError as e:
             print(e)
             print("vsearch dereplication encountered an error\ntrying next sample")
@@ -843,7 +843,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             # check that you have enough space
             file = search_derep_fastas[0]
             # fix file permissions for output
-            os.chmod(str(file), 0o777)
+            os.chmod(str(file), 0o666)
             # get for free disk space
             free_space, percent_free = disk_space_checker(project_folder)
             fasta_size = os.path.getsize(file) / gb
@@ -884,9 +884,6 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             # change into sonar P1 targer directory
             os.chdir(dir_with_sonar1_files)
             subprocess.call(f"sbatch -J {sonar1_job_name} {run_sonar_p1} --wait", shell=True)
-            # fix file permissions for output
-            # todo:
-            # os.chmod(str(file), 0o777)
 
         except subprocess.CalledProcessError as e:
             print(e)
