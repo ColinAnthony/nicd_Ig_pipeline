@@ -605,8 +605,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 id_prefix = sample_name[3:6]
                 unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
                 # set job id
-                # pear_job_name = f"{id_prefix}{unique_suffix}PR"
-                pear_job_name = f"123456"
+                pear_job_name = f"{id_prefix}{unique_suffix}PR"
                 run_pear = pathlib.Path(dir_with_raw_files, "run_pear.sh")
                 with open(run_pear, "w") as handle:
                     handle.write("#!/bin/sh\n")
@@ -617,7 +616,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 os.chmod(str(run_pear), 0o777)
                 with open(logfile, "a") as handle:
                     handle.write(f"# running PEAR command from file:\n{run_pear}\n")
-                cmd_pear = f"sbatch -J {pear_job_name} {run_pear} --wait "
+                cmd_pear = f"sbatch -J {pear_job_name} {run_pear} --wait"
                 try:
                     print("starting pear")
                     pear_output = subprocess.check_output(cmd_pear, shell=True)
@@ -677,7 +676,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 os.chmod(run_fastq_fasta, 0o777)
                 with open(logfile, "a") as handle:
                     handle.write(f"# running fastq_to_fasta command from file:\n{run_fastq_fasta}\n")
-                cmd_fastq_fasta = f"sbatch --wait -J {fastq_fasta_job_name} {run_fastq_fasta}"
+                cmd_fastq_fasta = f"sbatch -J {fastq_fasta_job_name} {run_fastq_fasta} --wait"
                 try:
                     subprocess.call(cmd_fastq_fasta, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except subprocess.CalledProcessError as e:
@@ -764,7 +763,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         os.chmod(run_derep, 0o777)
         with open(logfile, "a") as handle:
             handle.write(f"# running dereplication command from file:\n{str(file_to_dereplicate)}\n")
-        cmd_derep = f"sbatch -J {derep_job_name} {run_derep}"
+        cmd_derep = f"sbatch -J {derep_job_name} {run_derep} --wait"
 
         try:
             derep_output = subprocess.check_output(cmd_derep, shell=True)
@@ -866,14 +865,14 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             handle.write("#SBATCH --mem=4000\n\n")
             handle.write(f"python2 /opt/conda2/pkgs/sonar/annotate/1.1-blast_V.py -locus {sonar_version_setting[0]} "
                          f"-callJ -jArgs {sonar_version_setting[1]}\n")
-            handle.write(f"sbatch -J {sonar1_job_name} {run_sonar_p1}")
+            handle.write(f"sbatch -J {sonar1_job_name} {run_sonar_p1} --wait")
         os.chmod(str(run_sonar_p1), 0o777)
         with open(logfile, "a") as handle:
             handle.write(f"# running Sonar1 command from file:\n{str(run_sonar_p1)}\n")
         try:
             # change into sonar P1 targer directory
             os.chdir(dir_with_sonar1_files)
-            # subprocess.call(run_sonar, shell=True)
+            subprocess.call(f"sbatch -J {sonar1_job_name} {run_sonar_p1} --wait", shell=True)
         except subprocess.CalledProcessError as e:
             print(e)
             print("Sonar P1 encountered an error\ntrying next sample")
@@ -1010,11 +1009,17 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                         if not sonar_p1_alread_cp_output and sonar_p1_alread_cp_work:
                             print("Copied files are different from sonar P1 original files\nCopy must have failed")
                             sys.exit("exiting")
-            # run sonar2
+
+
+            id_prefix = sample_name[3:6]
+            unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+            # set job id
+            sonar2_job_name = f"{id_prefix}{unique_suffix}S2"
             os.chdir(target_folder)
             os.chmod(str(sonar_p2_run), 0o777)
             try:
-                subprocess.call(sonar_p2_run, shell=True)
+                # run sonar2
+                subprocess.call(f"sbatch -J {sonar2_job_name} {sonar_p2_run} --wait", shell=True)
             except subprocess.CalledProcessError as e:
                 print(e)
                 print("There was an error running sonar P2\nTrying next sample")
