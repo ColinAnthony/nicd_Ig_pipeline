@@ -616,16 +616,13 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 os.chmod(str(run_pear), 0o777)
                 with open(logfile, "a") as handle:
                     handle.write(f"# running PEAR command from file:\n{run_pear}\n")
-                cmd_pear = f"sbatch -J {pear_job_name} {run_pear}"
+                cmd_pear = f"sbatch --wait -J {pear_job_name} {run_pear}"
                 try:
                     print("starting pear")
-                    pear_output = os.system(cmd_pear)
-                    os.wait()
-
-                    # pear_output = subprocess.check_output(cmd_pear, shell=True)
-                    print("pear done?")
+                    pear_output = subprocess.check_output(cmd_pear, shell=True)
+                    pear_output = pear_output.decode("utf-8")
+                    print(pear_output)
                     input("enter")
-                    # pear_output = pear_output.decode("utf-8")
                     # with open(logfile, "a") as handle:
                     #     handle.write(pear_output)
                     #     handle.write("\n")
@@ -679,7 +676,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 os.chmod(run_fastq_fasta, 0o777)
                 with open(logfile, "a") as handle:
                     handle.write(f"# running fastq_to_fasta command from file:\n{run_fastq_fasta}\n")
-                cmd_fastq_fasta = f"sbatch -J {fastq_fasta_job_name} {run_fastq_fasta}"
+                cmd_fastq_fasta = f"sbatch --wait -J {fastq_fasta_job_name} {run_fastq_fasta}"
                 try:
                     subprocess.call(cmd_fastq_fasta, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except subprocess.CalledProcessError as e:
