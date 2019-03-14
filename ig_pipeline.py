@@ -497,10 +497,15 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
         check_bad_person = list(path.glob("*.fastq*"))
         check_good_person = list(pathlib.Path(path, "0_new_data").glob("*.fastq*"))
 
-        if len(check_bad_person) > 0:
+        if check_bad_person:
             print("raw data found in project folder but not in '0_new_data' folder\nmove files to '0_new_data'")
-        else:
             sys.exit("exiting")
+        elif check_good_person:
+            pass
+        else:
+            print("No target files found")
+            sys.exit("exiting")
+
     else:
         with open(logfile, "a") as handle:
             handle.write(f"# files found in target folder\n")
