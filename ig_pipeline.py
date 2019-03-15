@@ -416,17 +416,17 @@ def unzip_files(path, logfile):
         # set job id
         gunzip_job_name = 'gunzip'
         run_gunzip = pathlib.Path(path, "scripts", "run_gunzip.sh")
-        gzip = f"gunzip {str(new_data)}/*.gz"
+        gunzip = f"gunzip {str(new_data)}/*.gz"
         with open(run_gunzip, "w") as handle:
             handle.write("#!/bin/sh\n")
             handle.write("#SBATCH -J gzip\n")
             handle.write("#SBATCH --mem=1000\n\n")
-            handle.write(f"gzip\n")
+            handle.write(f"{gunzip}\n")
         os.chmod(run_gunzip, 0o777)
 
         with open(logfile, "a") as handle:
             handle.write("# uncompressing .gz files\n")
-            handle.write(f"{gzip}\n")
+            handle.write(f"{gunzip}\n")
 
         cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip} --wait"
         try:
@@ -610,6 +610,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         # check for zipped files
         search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R*.fastq.gz"))
         if search_zip_raw_files:
+            print("fastq.gz raw files found")
+            print(f"unzipping raw files")
             for i, file in enumerate(search_zip_raw_files):
                 # get for free disk space
                 free_space, percent_free = disk_space_checker(path)
@@ -621,7 +623,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                                      f"{free_space}Gb {percent_free}%\n")
                     sys.exit("exiting")
                 else:
-                    print(f"unzipping gz")
                     # set job id
                     gunzip_job_name = f'gunzip{str(i)}'
                     run_gunzip = pathlib.Path(path, "scripts", f"run_gunzip_raw{str(i)}.sh")
@@ -634,7 +635,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     os.chmod(run_gunzip, 0o777)
 
                     with open(logfile, "a") as handle:
-                        handle.write(f"# gunzip on raw files\n{gz_cmd}")
+                        handle.write(f"# gunzip on raw files\n{gz_cmd}\n")
 
                     cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip} --wait"
                     try:
