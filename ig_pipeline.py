@@ -703,7 +703,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                         wait_time = 0
                         while check:
                             print("checking if gzip on merged file is ready")
-                            zip_merged_file = pathlib.Path(meged_outfile, ".gz")
+                            zip_merged_file = pathlib.Path(f"{str(meged_outfile)}.gz")
                             if zip_merged_file.is_file():
                                 print("ready")
                                 break
