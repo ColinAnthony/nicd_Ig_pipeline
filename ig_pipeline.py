@@ -529,11 +529,13 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 cmd_gzip = f"sbatch -J {gzip_job_name} {run_gzip}"
                 try:
                     subprocess.call(cmd_gzip, shell=True)
-                    search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
+
                     check = True
                     wait_time = 0
                     while check:
-                        print("checking if gzip on merged file is ready")
+                        print("checking if gzip on raw file is ready")
+                        search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
+                        print("merged", search_raw_files)
                         if search_raw_files:
                             print("ready")
                             break
@@ -696,16 +698,12 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     cmd_gzip = f"sbatch --depend=afterany:{fastq_fasta_slurm_id} -J {gzip_job_name} {run_gzip}"
                     try:
                         subprocess.call(cmd_gzip, shell=True)
-                        fastq_fasta_slurm_id = subprocess.check_output(cmd_fastq_fasta, shell=True).decode(
-                            sys.stdout.encoding).strip()
-                        fastq_fasta_slurm_id = fastq_fasta_slurm_id.split(" ")[-1]
-                        # # todo: remove
-                        # subprocess.call(cmd_gzip, shell=True)
-                        zip_merged_file = pathlib.Path(meged_outfile, ".gz")
+                        subprocess.check_output(cmd_fastq_fasta, shell=True).decode(sys.stdout.encoding).strip()
                         check = True
                         wait_time = 0
                         while check:
                             print("checking if gzip on merged file is ready")
+                            zip_merged_file = pathlib.Path(meged_outfile, ".gz")
                             if zip_merged_file.is_file():
                                 print("ready")
                                 break
