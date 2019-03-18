@@ -334,61 +334,60 @@ def move_raw_data(path, settings_dataframe, logfile):
         print("No fastq (fastq.gz/fastq.zip) files in 0new_data")
         with open(logfile, "a") as handle:
             handle.write("# No fastq (fastq.gz/fastq.zip) files in 0new_data\n")
+    else:
+        for file in raw_files:
+            full_name = file
+            name = file.stem
+            parts = name.split("_")
 
-    for file in raw_files:
-        full_name = file
-        name = file.stem
-        parts = name.split("_")
+            if len(parts) < 6:
+                print(parts)
+                print("name formatted incorrectly")
+                sys.exit("exiting")
 
-        if len(parts) < 6:
-            print(parts)
-            print("name formatted incorrectly")
-            sys.exit("exiting")
+            if parts[-1] == 'R1' or parts[-1] == 'R2':
+                # name already formatted
+                copy_name = f"{name}.fastq"
+                search_name = "_".join(parts[:5])
+            else:
+                search_name = "_".join(parts[:5])
+                copy_name = "_".join(parts[:5]) + f"_{parts[7]}.fastq"
 
-        if parts[-1] == 'R1' or parts[-1] == 'R2':
-            # name already formatted
-            copy_name = f"{name}.fastq"
-            search_name = "_".join(parts[:5])
-        else:
-            search_name = "_".join(parts[:5])
-            copy_name = "_".join(parts[:5]) + f"_{parts[7]}.fastq"
+            fields = settings_dataframe.loc[settings_dataframe['sample_name'] == search_name].head(1)
+            if fields.empty:
+                print(f"Your sample name {search_name}\nwas not found in the settings 'sample_name' column\n"
+                      f"Please fix the file name or settings file accordingly")
+                with open(logfile, "a") as handle:
+                    handle.write(f"Your sample name {search_name}\nwas not found in the settings 'sample_name' column\n")
+                    handle.write(f"Please fix the file name or settings file accordingly\nexiting")
+                sys.exit("exiting")
 
-        fields = settings_dataframe.loc[settings_dataframe['sample_name'] == search_name].head(1)
-        if fields.empty:
-            print(f"Your sample name {search_name}\nwas not found in the settings 'sample_name' column\n"
-                  f"Please fix the file name or settings file accordingly")
+            lineage = fields.iloc[0]["lineage"].lower()
+            chain = fields.iloc[0]["sonar_1_version"].lower()
+            time_point = fields.iloc[0]["time_point"].lower()
+            destination = pathlib.Path(path, lineage, time_point, chain, "1_raw_data", copy_name)
+
+            # copy the file to the correct folder
+            mv = f"mv {file} {destination}"
+
             with open(logfile, "a") as handle:
-                handle.write(f"Your sample name {search_name}\nwas not found in the settings 'sample_name' column\n")
-                handle.write(f"Please fix the file name or settings file accordingly\nexiting")
-            sys.exit("exiting")
+                handle.write(f"# moving files to target folder\n{mv}\n")
 
-        lineage = fields.iloc[0]["lineage"].lower()
-        chain = fields.iloc[0]["sonar_1_version"].lower()
-        time_point = fields.iloc[0]["time_point"].lower()
-        destination = pathlib.Path(path, lineage, time_point, chain, "1_raw_data", copy_name)
-
-        # copy the file to the correct folder
-        mv = f"mv {file} {destination}"
-
-        with open(logfile, "a") as handle:
-            handle.write(f"# moving files to target folder\n{mv}\n")
-
-        try:
-            print(f"moving file {full_name}")
-            subprocess.call(mv, shell=True)
-        except subprocess.CalledProcessError as e:
-            print(e)
-            print("moving files to 1_raw_data failed\ntrying next sample")
-            with open(logfile, "a") as handle:
-                handle.write(f"# moving files to 1_raw_data failed\n{e}\n")
+            try:
+                print(f"moving file {full_name}")
+                subprocess.call(mv, shell=True)
+            except subprocess.CalledProcessError as e:
+                print(e)
+                print("moving files to 1_raw_data failed\ntrying next sample")
+                with open(logfile, "a") as handle:
+                    handle.write(f"# moving files to 1_raw_data failed\n{e}\n")
 
 
-def make_job_lists(path, list_all_jobs_to_run, logfile):
+def make_job_lists(path, list_all_jobs_to_run):
     """
     function to generate a list of samples to run for each step in pipeline
     :param path: (pathlib object) the project folder path
     :param list_all_jobs_to_run:
-    :param logfile: (str) path and name of the logfile
     :return: (list) of jobs to run for each step
     """
     # counter for checking if there are files to run the pipeline on
@@ -437,21 +436,17 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
     if n == 0:
         check_bad_person = list(path.glob("*.fastq*"))
         check_good_person1 = list(pathlib.Path(path, "0_new_data").glob("*.fastq*"))
-        check_good_person2 = list(pathlib.Path(path, "0_new_data").glob("*.zip"))
-
         if check_bad_person:
             print("raw data found in project folder but not in '0_new_data' folder\nmove files to '0_new_data'")
             sys.exit("exiting")
-        elif check_good_person1 or check_good_person2:
+        elif check_good_person1:
             pass
         else:
             print("No target files found")
             sys.exit("exiting")
 
     else:
-        with open(logfile, "a") as handle:
-            handle.write(f"# files found in target folder\n")
-        print("files found")
+       pass
 
     return command_call_processing, command_call_sonar_1, command_call_sonar_2
 
@@ -470,9 +465,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
     for item in command_call_processing:
         sample_name = item[0]
-        with open(logfile, "a") as handle:
-            handle.write(f"fastq processing on {sample_name}\n")
-
         print(f"processing {sample_name}")
 
         dir_with_raw_files = item[1]
@@ -485,7 +477,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R*.fastq.gz"))
         if search_zip_raw_files:
             print("fastq.gz raw files found")
-
+            with open(logfile, "a") as handle:
+                handle.write(f"# raw files found in target folder {search_zip_raw_files}\n")
             # remove old merged files if present
             merged_search = list(merged_folder.glob(f"{sample_name}*.fastq*"))
             if merged_search:
@@ -503,9 +496,12 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             # remove old dereplicated file
             print(f"removing old dereplicated file for {sample_name}")
             derep_search = list(derep_folder.glob("*_unique.fasta"))
-            if derep_search
+            if derep_search:
                 for file in derep_search:
                     os.unlink(str(file))
+
+        with open(logfile, "a") as handle:
+            handle.write(f"# fastq processing on {sample_name}\n")
 
         search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
         if not search_raw_files:
@@ -532,6 +528,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                             f"you have{free_space}Gb free\n")
                     sys.exit("exiting")
 
+                print("running PEAR")
                 # if both R1 and R2 files are present, continue with the processing
                 pear_outfile = file_r1.name.replace("_R1.fastq.gz", "")
                 merged_file_name = pathlib.Path(merged_folder, pear_outfile)
@@ -555,18 +552,16 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 with open(logfile, "a") as handle:
                     handle.write(f"# running PEAR\n{pear}\n")
                 cmd_pear = f"sbatch -J {pear_job_name} {run_pear} --ntasks=1 --cpus-per-task={threads} --parsable"
-
-                print("running PEAR")
                 pear_slurm_id = subprocess.check_output(cmd_pear, shell=True).decode(sys.stdout.encoding).strip()
                 pear_slurm_id = pear_slurm_id.split(" ")[-1]
-                print(pear_slurm_id)
+
                 check = True
                 wait_time = 0
                 while check:
                     print("checking if merged output is ready")
                     if meged_outfile.is_file():
-                        check = False
                         print("ready")
+                        break
                     else:
                         print("waiting 2 min")
                         time.sleep(10)
@@ -620,10 +615,10 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     check = True
                     wait_time = 0
                     while check:
-                        print("checking if raw fastq to fasta output is ready")
+                        print("checking if fastq to fasta output is ready")
                         if fasta.is_file():
-                            check = False
                             print("ready")
+                            break
                         else:
                             print("waiting 2 min")
                             time.sleep(10)
@@ -638,57 +633,56 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                         handle.write(f"vsearch fastq to fasta failed\n{e}\n")
                     continue
                 # compress pear if the merged file was successfully converted to a fasta file
-                # if fasta.is_file():
-                #     # fix file permissions for output
-                #     os.chmod(str(fasta), 0o666)
-                #     # add file to list of fastas to derep (or just be moved to derep folder if only a single fasta)
-                #     print("compressing merged fastq file")
-                #     # set job id
-                #     gzip_job_name = f'gzip{str(j)}'
-                #     run_gzip = pathlib.Path(path, "scripts", "run_gzip_merged.sh")
-                #     cmd_gzip = f"gzip {meged_outfile}"
-                #     with open(run_gzip, "w") as handle:
-                #         handle.write("#!/bin/sh\n")
-                #         handle.write("#SBATCH -J gzip\n")
-                #         handle.write("#SBATCH --mem=1000\n")
-                #         handle.write(f"{cmd_gzip}\n")
-                #     os.chmod(run_gzip, 0o777)
-                #
-                #     with open(logfile, "a") as handle:
-                #         handle.write(f"# gzip on merged file:\n{cmd_gzip}\n")
-                #
-                #     cmd_gzip = f"sbatch --depend=afterany:{fastq_fasta_slurm_id} -J {gzip_job_name} {run_gzip}"
-                #     try:
-                #         subprocess.call(cmd_gzip, shell=True)
-                #         fastq_fasta_slurm_id = subprocess.check_output(cmd_fastq_fasta, shell=True).decode(
-                #             sys.stdout.encoding).strip()
-                #         fastq_fasta_slurm_id = fastq_fasta_slurm_id.split(" ")[-1]
-                #         # # todo: remove
-                #         # subprocess.call(cmd_gzip, shell=True)
-                #         check = True
-                #         wait_time = 0
-                #         while check:
-                #             print("checking if gzip on merged file is ready")
-                #             if check_file.is_file():
-                #                 check = False
-                #                 os.unlink(check_file)
-                #                 print("ready")
-                #             else:
-                #                 print("waiting 2 min")
-                #                 time.sleep(10)
-                #             if wait_time < 10:
-                #                 wait_time += 2
-                #             else:
-                #                 sys.exit("waiting time ran out")
-                #     except subprocess.CalledProcessError as e:
-                #         print(e)
-                #         print("gzip on merged file encountered an error\ntrying next sample")
-                #         with open(logfile, "a") as handle:
-                #             handle.write(f"# gzip on merged file failed\n{e}\n")
-                # else:
-                #     print("could not find the fasta file\nconversion of fastq to fasta might have failed\n")
-                #     sys.exit("exiting")
+                if fasta.is_file():
+                    # fix file permissions for output
+                    os.chmod(str(fasta), 0o666)
+                    print("compressing merged fastq file")
+                    # set job id
+                    gzip_job_name = f'gzip{str(j)}'
+                    run_gzip = pathlib.Path(path, "scripts", "run_gzip_merged.sh")
+                    cmd_gzip = f"gzip {meged_outfile}"
+                    with open(run_gzip, "w") as handle:
+                        handle.write("#!/bin/sh\n")
+                        handle.write("#SBATCH -J gzip\n")
+                        handle.write("#SBATCH --mem=1000\n")
+                        handle.write(f"{cmd_gzip}\n")
+                    os.chmod(run_gzip, 0o777)
 
+                    with open(logfile, "a") as handle:
+                        handle.write(f"# gzip on merged file:\n{cmd_gzip}\n")
+
+                    cmd_gzip = f"sbatch --depend=afterany:{fastq_fasta_slurm_id} -J {gzip_job_name} {run_gzip}"
+                    try:
+                        subprocess.call(cmd_gzip, shell=True)
+                        fastq_fasta_slurm_id = subprocess.check_output(cmd_fastq_fasta, shell=True).decode(
+                            sys.stdout.encoding).strip()
+                        fastq_fasta_slurm_id = fastq_fasta_slurm_id.split(" ")[-1]
+                        # # todo: remove
+                        # subprocess.call(cmd_gzip, shell=True)
+                        zip_merged_file = pathlib.Path(meged_outfile, ".gz")
+                        check = True
+                        wait_time = 0
+                        while check:
+                            print("checking if gzip on merged file is ready")
+                            if zip_merged_file.is_file():
+                                print("ready")
+                                break
+                            else:
+                                print("waiting 2 min")
+                                time.sleep(10)
+                            if wait_time < 10:
+                                wait_time += 2
+                            else:
+                                sys.exit("waiting time ran out")
+                    except subprocess.CalledProcessError as e:
+                        print(e)
+                        print("gzip on merged file encountered an error\ntrying next sample")
+                        with open(logfile, "a") as handle:
+                            handle.write(f"# gzip on merged file failed\n{e}\n")
+                else:
+                    print("could not find the fasta file\nconversion of fastq to fasta might have failed\n")
+                    sys.exit("exiting")
+    input("enter")
     # move fastas to target dir and do dereplication if needed
     with open(logfile, "a") as handle:
         handle.write(f"# dereplicating files\n")
@@ -761,8 +755,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                             wait_time += 2
                         else:
                             sys.exit("waiting time ran out")
-                    # todo: remove
-                    # subprocess.call(concat_cmd, shell=True)
+
                 except subprocess.CalledProcessError as e:
                     print(e)
                     print("concatenating files encountered an error\ntrying next sample")
@@ -794,13 +787,13 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             handle.write("#!/bin/sh\n")
             handle.write("##SBATCH -w, --nodelist=node01\n")
             handle.write("#SBATCH --mem=1000\n")
-            handle.write(f"{derep_cmd}")
+            handle.write(f"{derep_cmd}\n")
         os.chmod(run_derep, 0o777)
 
         with open(logfile, "a") as handle:
             handle.write(f"# running dereplication\n{str(derep_cmd)}\n")
 
-        cmd_derep = f"sbatch -J {derep_job_name} {run_derep} --wait --ntasks=1 --cpus-per-task={threads}"
+        cmd_derep = f"sbatch -J {derep_job_name} {run_derep} --ntasks=1 --cpus-per-task={threads}"
         try:
             subprocess.check_output(cmd_derep, shell=True)
             check = True
@@ -1120,7 +1113,7 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     log_file = pathlib.Path(path, f"{time_stamp}_log_file.txt")
     with open(log_file, "w") as handle:
         handle.write(f"# start of pipeline run for project: {project_name}\n")
-        handle.write(f"Free space at start = {free_space}Gb ({percent_free}%)\n")
+        handle.write(f"Free space at start = {free_space}Gb ({percent_free}%)\n\n")
     os.chmod(str(log_file), 0o777)
 
     # check that settings file has the correct headings
@@ -1135,8 +1128,7 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
         sys.exit("exiting")
 
     # generate the job lists
-    command_call_processing, command_call_sonar_1, command_call_sonar_2 = make_job_lists(path, list_all_settings,
-                                                                                         log_file)
+    command_call_processing, command_call_sonar_1, command_call_sonar_2 = make_job_lists(path, list_all_settings)
     # only run sample processing if one or more files were specified
     if command_call_processing:
         # move files from 0_new_data, into correct directory, if necessary
