@@ -462,7 +462,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     # Bites to Gb adjustment
     gb = (1024 * 1024) * 1024
     threads = 4
-
+    sleep_time_sec = 10
+    max_wait_time = sleep_time_sec * 5
     for item in command_call_processing:
         sample_name = item[0]
         print(f"processing {sample_name}")
@@ -474,9 +475,9 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         derep_folder = pathlib.Path(parent_path, "4_dereplicated")
 
         # check for zipped files
-        search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R*.fastq.gz"))
+        search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R*.fastq*"))
         if search_zip_raw_files:
-            print("fastq.gz raw files found")
+            print("raw files found")
             with open(logfile, "a") as handle:
                 handle.write(f"# raw files found in target folder {search_zip_raw_files}\n")
             # remove old merged files if present
@@ -535,14 +536,13 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     while check:
                         print("checking if gzip on raw file is ready")
                         search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
-                        print("merged", search_raw_files)
                         if search_raw_files:
                             print("ready")
                             break
                         else:
                             print("waiting 2 min")
-                            time.sleep(10)
-                        if wait_time < 10:
+                            time.sleep(sleep_time_sec)
+                        if wait_time < max_wait_time:
                             wait_time += 2
                         else:
                             sys.exit("waiting time ran out")
@@ -608,8 +608,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                         break
                     else:
                         print("waiting 2 min")
-                        time.sleep(10)
-                    if wait_time < 10:
+                        time.sleep(sleep_time_sec)
+                    if wait_time < max_wait_time:
                         wait_time += 2
                     else:
                         print(f"{meged_outfile} not found in {merged_folder}")
@@ -665,8 +665,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                             break
                         else:
                             print("waiting 2 min")
-                            time.sleep(10)
-                        if wait_time < 10:
+                            time.sleep(sleep_time_sec)
+                        if wait_time < max_wait_time:
                             wait_time += 2
                         else:
                             sys.exit("waiting time ran out")
@@ -709,8 +709,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                                 break
                             else:
                                 print("waiting 2 min")
-                                time.sleep(10)
-                            if wait_time < 10:
+                                time.sleep(sleep_time_sec)
+                            if wait_time < max_wait_time:
                                 wait_time += 2
                             else:
                                 sys.exit("waiting time ran out")
@@ -789,8 +789,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                             print("ready")
                         else:
                             print("waiting 2 min")
-                            time.sleep(10)
-                        if wait_time < 10:
+                            time.sleep(sleep_time_sec)
+                        if wait_time < max_wait_time:
                             wait_time += 2
                         else:
                             sys.exit("waiting time ran out")
@@ -844,8 +844,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     print("ready")
                 else:
                     print("waiting 2 min")
-                    time.sleep(10)
-                if wait_time < 10:
+                    time.sleep(sleep_time_sec)
+                if wait_time < max_wait_time:
                     wait_time += 2
                 else:
                     sys.exit("waiting time ran out")
@@ -871,7 +871,8 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
     :return:
     """
     gb = (1024 * 1024) * 1024
-
+    sleep_time_sec = 60 * 60
+    max_wait_time = sleep_time_sec * 24 * 2
     for item in command_call_sonar_1:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
@@ -904,8 +905,13 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             print(f"multiple fasta files found in {dir_with_sonar1_files}\n"
                   f"Sonar1 can only run if there is one fasta file in this folder\ntrying next sample")
             with open(logfile, "a") as handle:
-                handle.write(f"# multiple fasta files in  {dir_with_sonar1_files}\n")
+                handle.write(f"# multiple fasta files in {dir_with_sonar1_files}\n")
             continue
+        elif len(search_derep_fastas) == 0:
+            print(f"No fasta files found in {dir_with_sonar1_files}\n"
+                  f"Sonar1 can only run if there is one fasta file in this folder\ntrying next sample")
+            with open(logfile, "a") as handle:
+                handle.write(f"# No fasta files in {dir_with_sonar1_files}\n")
         else:
             # check that you have enough space
             file = search_derep_fastas[0]
@@ -952,8 +958,22 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
         try:
             # change into sonar P1 targer directory
             os.chdir(dir_with_sonar1_files)
-            # subprocess.call(sonar1_run_cmd, shell=True)
-
+            subprocess.call(sonar1_run_cmd, shell=True)
+            check = True
+            wait_time = 0
+            while check:
+                sonar_P1_check = dir_with_sonar1_output.glob("*.fasta")
+                print("checking if dereplication file is ready")
+                if sonar_P1_check:
+                    check = False
+                    print("ready")
+                else:
+                    print(f"waiting {wait_time/60} min")
+                    time.sleep(sleep_time_sec)
+                if wait_time < max_wait_time:
+                    wait_time += 1
+                else:
+                    sys.exit("waiting time ran out")
         except subprocess.CalledProcessError as e:
             print(e)
             print("Sonar P1 encountered an error\ntrying next sample")
@@ -975,7 +995,9 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
     :return:
     """
     gb = (1024 * 1024) * 1024
-
+    threads = 4
+    sleep_time_sec = 10
+    max_wait_time = sleep_time_sec * 5
     for item in command_call_sonar_2:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
