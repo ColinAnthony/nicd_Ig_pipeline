@@ -505,8 +505,50 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
         search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
         if not search_raw_files:
-            print(f"No fastq files in target folder for {sample_name}\nTrying next sample\n")
-            continue
+            search_raw_files_fastq = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq"))
+            if not search_raw_files_fastq:
+                print(f"No fastq files in target folder for {sample_name}\nTrying next sample\n")
+                continue
+            else:
+                print("unzipped raw fastq file in 1_raw_data\nkeep these files zipped to save space\n")
+
+                # set job id
+                gzip_job_name = f'gzipRaw'
+                run_gzip = pathlib.Path(path, "scripts", "run_gzip_raw.sh")
+                cmd_gz = f"gzip {dir_with_raw_files}/*.fastq"
+                with open(run_gzip, "w") as handle:
+                    handle.write("#!/bin/sh\n")
+                    handle.write("#SBATCH -J gzip\n")
+                    handle.write("#SBATCH --mem=1000\n")
+                    handle.write(f"{cmd_gz}\n")
+                os.chmod(run_gzip, 0o777)
+
+                with open(logfile, "a") as handle:
+                    handle.write(f"# gzip on raw file:\n{cmd_gz}\n")
+
+                cmd_gzip = f"sbatch -J {gzip_job_name} {run_gzip}"
+                try:
+                    subprocess.call(cmd_gzip, shell=True)
+                    search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
+                    check = True
+                    wait_time = 0
+                    while check:
+                        print("checking if gzip on merged file is ready")
+                        if search_raw_files:
+                            print("ready")
+                            break
+                        else:
+                            print("waiting 2 min")
+                            time.sleep(10)
+                        if wait_time < 10:
+                            wait_time += 2
+                        else:
+                            sys.exit("waiting time ran out")
+                except subprocess.CalledProcessError as e:
+                    print(e)
+                    print("gzip on merged file encountered an error\ntrying next sample")
+                    with open(logfile, "a") as handle:
+                        handle.write(f"# gzip on merged file failed\n{e}\n")
 
         for j, file_r1 in enumerate(search_raw_files):
             file_r2 = str(file_r1).replace("_R1.fastq.gz", "_R2.fastq.gz")
@@ -731,14 +773,13 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     handle.write("#!/bin/sh\n")
                     handle.write("#SBATCH -J gzip\n")
                     handle.write("#SBATCH --mem=1000\n")
-                    handle.write("#SBATCH --wait\n")
                     handle.write(f"{concat_cmd}\n")
                 os.chmod(run_cat, 0o777)
 
                 with open(logfile, "a") as handle:
                     handle.write(f"# concatenating multiple merged fasta files\n{concat_cmd}\n")
 
-                cmd_cat = f"sbatch -J {cat_job_name} {run_cat} --wait"
+                cmd_cat = f"sbatch -J {cat_job_name} {run_cat}"
                 try:
                     subprocess.call(cmd_cat, shell=True)
                     check = True
