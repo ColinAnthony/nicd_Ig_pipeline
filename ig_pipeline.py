@@ -29,8 +29,7 @@ import filecmp
 from docopt import docopt
 import pandas as pd
 import struct
-
-# todo change so that only NB jobs get run by sbatch others run on local/head node
+import time
 
 
 __author__ = 'Colin Anthony'
@@ -71,13 +70,13 @@ def is_same(dir1, dir2):
     return True
 
 
-def read32(input):
+def read32(fileobj):
     """
     https://github.com/enthought/Python-2.7.3/blob/master/Lib/gzip.py
-    :param input:
+    :param fileobj: file object
     :return:
     """
-    return struct.unpack("<I", input.read(4))[0]
+    return struct.unpack("<I", fileobj.read(4))[0]
 
 
 def get_uncompressed_size(file):
@@ -127,14 +126,20 @@ def fasta_to_dct(file_name):
 
 
 def disk_space_checker(path):
+    """
+    function to find how much disk space is free
+    :param path: (str) path to check
+    :return: (float) free space remaining in gb and percent of total
+    """
     # check for free disk space
     disk_space_object = os.statvfs(path)
     gb = (1024 * 1024) * 1024
     # always keep a bit of free space for the safety reasons
     safety_buffer = 10
     total_space = disk_space_object.f_blocks * disk_space_object.f_frsize / gb - safety_buffer
-    free_space = disk_space_object.f_bfree * disk_space_object.f_frsize / gb - safety_buffer
+    free_space = round(disk_space_object.f_bfree * disk_space_object.f_frsize / gb - safety_buffer, 3)
     percent_free = round((free_space / total_space) * 100, 2)
+
     return free_space, percent_free
 
 
@@ -306,126 +311,6 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name):
         sys.exit("exiting")
 
 
-def unzip_files(path, logfile):
-    """
-    a function to unpack .zip archives and decompress any .gz files
-    :param path: the path to the project folder
-    :param logfile: (str) path and name of the logfile
-    :return:
-    """
-    # Bites to Gb adjustment
-    gb = (1024 * 1024) * 1024
-
-    new_data = pathlib.Path(path, "0_new_data")
-
-    # find zip files
-    search_zip = list(new_data.glob("*.zip"))
-    if search_zip:
-        for file in search_zip:
-            # get for free disk space
-            free_space, percent_free = disk_space_checker(path)
-            # get file size
-            zip_size = os.path.getsize(file) / gb
-            if free_space < zip_size * 5:
-                print(f"not enough free space to unzip\nFree space is {free_space}Gb")
-                with open(logfile, "a") as handle:
-                    handle.write(f"# Not enough free space to unzip\nFree space is {free_space}Gb {percent_free}%\n")
-                sys.exit("exiting")
-            else:
-                print("archived file detected")
-                run_unzip = pathlib.Path(path, "scripts", "run_unzip.sh")
-                unzip_job_name = 'unzip'
-                unzip = f"unzip {file} -d {new_data}"
-                with open(run_unzip, "w") as handle:
-                    handle.write("#!/bin/sh\n")
-                    handle.write("#SBATCH -J gzip\n")
-                    handle.write("#SBATCH --mem=1000\n")
-                    handle.write(f"{unzip}\n")
-                os.chmod(run_unzip, 0o777)
-
-                with open(logfile, "a") as handle:
-                    handle.write("# unzipping archive\n")
-                    handle.write(f"{unzip}\n")
-
-                cmd_unzip = f"sbatch -J {unzip_job_name} {run_unzip} --wait"
-                try:
-                    # subprocess.call(cmd_unzip, shell=True)
-                    # todo: remove
-                    subprocess.call(unzip, shell=True)
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# removing original archive {str(file)}\n")
-                    os.unlink(str(file))
-
-                except subprocess.CalledProcessError as e:
-                    print(e)
-                    print("unzipping archive failed")
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# unzipping archive failed for {str(file)}\n")
-                    if list(pathlib.Path(path, "0_new_data").glob("*.gz")):
-                        continue
-                    else:
-                        sys.exit("exiting")
-
-    # find .gz files
-    search_gz = list(new_data.glob("*.gz"))
-
-    # get needed space to unpack gz files
-    total_un_gz_size = 0
-    # get free space
-    free_space, percent_free = disk_space_checker(path)
-    for file in search_gz:
-        # fix file permissions for output
-        os.chmod(str(file), 0o666)
-        # get expanded file size
-        total_un_gz_size += round(get_uncompressed_size(str(file)) / gb, 3)
-
-    if free_space < total_un_gz_size * 2:
-        print("not enough free space to unzip\n")
-        with open(logfile, "a") as handle:
-            handle.write(f"# Not enough free space to all the gz files\nNeed {total_un_gz_size} just to unzip"
-                         f"\nFree space is {free_space}")
-        sys.exit("exiting")
-
-    # unpack the raw gz files
-    if search_gz:
-        print(search_gz)
-        input("enter")
-        for i, file in enumerate(search_gz):
-            # fix file permissions
-            os.chmod(str(file), 0o666)
-
-            # do replace all '-' with '_' in file name
-            new_name = str(file).replace("-", "_")
-            os.rename(str(file), new_name)
-
-        # set job id
-        gunzip_job_name = 'gunzip'
-        run_gunzip = pathlib.Path(path, "scripts", "run_gunzip.sh")
-        gunzip = f"gunzip {str(new_data)}/*.gz"
-        with open(run_gunzip, "w") as handle:
-            handle.write("#!/bin/sh\n")
-            handle.write("#SBATCH -J gzip\n")
-            handle.write("#SBATCH --mem=1000\n")
-            handle.write(f"{gunzip}\n")
-        os.chmod(run_gunzip, 0o777)
-
-        with open(logfile, "a") as handle:
-            handle.write("# uncompressing .gz files\n")
-            handle.write(f"{gunzip}\n")
-
-        cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip} --wait"
-        try:
-            # subprocess.call(cmd_gunzip, shell=True)
-            # todo: remove
-            subprocess.call(gunzip, shell=True)
-        except subprocess.CalledProcessError as e:
-            print(e)
-            print("gunzip encountered an error\ntrying next sample")
-            with open(logfile, "a") as handle:
-                handle.write(f"# gunzip failed\n{e}\n")
-        # log command
-
-
 def move_raw_data(path, settings_dataframe, logfile):
     """
     function to move raw data to the correct folder within the project
@@ -434,10 +319,10 @@ def move_raw_data(path, settings_dataframe, logfile):
     :param logfile: (str) path and name of the logfile
     :return: a list of all the files that were moved
     """
-    raw_files = pathlib.Path(path, "0_new_data").glob("*.fastq")
 
+    raw_files = list(pathlib.Path(path, "0_new_data").glob("*.fastq*"))
     # rename raw files
-    for n, file in enumerate(raw_files):
+    for file in raw_files:
         # fix file permissions for output
         os.chmod(str(file), 0o666)
 
@@ -445,18 +330,29 @@ def move_raw_data(path, settings_dataframe, logfile):
         os.rename(str(file), new_name)
 
     # find where to move each raw file and move it to the right folder
-    raw_files = list(pathlib.Path(path, "0_new_data").glob("*.fastq"))
     if not raw_files:
         print("No fastq (fastq.gz/fastq.zip) files in 0new_data")
         with open(logfile, "a") as handle:
             handle.write("# No fastq (fastq.gz/fastq.zip) files in 0new_data\n")
 
-    for i, file in enumerate(raw_files):
+    for file in raw_files:
         full_name = file
         name = file.stem
         parts = name.split("_")
-        search_name = "_".join(parts[:5])
-        copy_name = "_".join(parts[:5]) + f"_{parts[7]}.fastq"
+
+        if len(parts) < 6:
+            print(parts)
+            print("name formatted incorrectly")
+            sys.exit("exiting")
+
+        if parts[-1] == 'R1' or parts[-1] == 'R2':
+            # name already formatted
+            copy_name = f"{name}.fastq"
+            search_name = "_".join(parts[:5])
+        else:
+            search_name = "_".join(parts[:5])
+            copy_name = "_".join(parts[:5]) + f"_{parts[7]}.fastq"
+
         fields = settings_dataframe.loc[settings_dataframe['sample_name'] == search_name].head(1)
         if fields.empty:
             print(f"Your sample name {search_name}\nwas not found in the settings 'sample_name' column\n"
@@ -472,32 +368,19 @@ def move_raw_data(path, settings_dataframe, logfile):
         destination = pathlib.Path(path, lineage, time_point, chain, "1_raw_data", copy_name)
 
         # copy the file to the correct folder
-        run_mv = pathlib.Path(path, "scripts", f"run_mv{str(i)}.sh")
-        mv_job_name = f"mv{str(i)}"
         mv = f"mv {file} {destination}"
-        with open(run_mv, "w") as handle:
-            handle.write("#!/bin/sh\n")
-            handle.write("#SBATCH -J gzip\n")
-            handle.write("#SBATCH --mem=1000\n")
-            handle.write(f"{mv}\n")
-        os.chmod(run_mv, 0o777)
 
         with open(logfile, "a") as handle:
             handle.write(f"# moving files to target folder\n{mv}\n")
 
-        mv_cmd = f"sbatch -J {mv_job_name} {run_mv} --wait"
         try:
             print(f"moving file {full_name}")
-            # subprocess.call(mv_cmd, shell=True)
-            # todo: remove
             subprocess.call(mv, shell=True)
         except subprocess.CalledProcessError as e:
             print(e)
             print("moving files to 1_raw_data failed\ntrying next sample")
             with open(logfile, "a") as handle:
                 handle.write(f"# moving files to 1_raw_data failed\n{e}\n")
-        # fix file permissions for output
-        # os.chmod(str(destination), 0o666)
 
 
 def make_job_lists(path, list_all_jobs_to_run, logfile):
@@ -583,11 +466,12 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     """
     # Bites to Gb adjustment
     gb = (1024 * 1024) * 1024
+    threads = 4
 
     for item in command_call_processing:
         sample_name = item[0]
         with open(logfile, "a") as handle:
-            handle.write(f"running Sonar P1 on {sample_name}\n")
+            handle.write(f"fastq processing on {sample_name}\n")
 
         print(f"processing {sample_name}")
 
@@ -601,66 +485,35 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R*.fastq.gz"))
         if search_zip_raw_files:
             print("fastq.gz raw files found")
-            print(f"unzipping raw files")
-            for i, file in enumerate(search_zip_raw_files):
-                # get for free disk space
-                free_space, percent_free = disk_space_checker(path)
-                zip_size = os.path.getsize(file) / gb
-                if free_space < zip_size * 2:
-                    print(f"not enough free space to gunzip\nFree space is {free_space}Gb")
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# Not enough free space to gunzip\nFree space is "
-                                     f"{free_space}Gb {percent_free}%\n")
-                    sys.exit("exiting")
-                else:
-                    # set job id
-                    gunzip_job_name = f'gunzip{str(i)}'
-                    run_gunzip = pathlib.Path(path, "scripts", f"run_gunzip_raw{str(i)}.sh")
-                    gz_cmd = f"gunzip {str(file)}"
-                    with open(run_gunzip, "w") as handle:
-                        handle.write("#!/bin/sh\n")
-                        handle.write("#SBATCH -J gzip\n")
-                        handle.write("#SBATCH --mem=1000\n")
-                        handle.write(f"{gz_cmd}\n")
-                    os.chmod(run_gunzip, 0o777)
 
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# gunzip on raw files\n{gz_cmd}\n")
-
-                    cmd_gunzip = f"sbatch -J {gunzip_job_name} {run_gunzip} --wait"
-                    try:
-                        # subprocess.call(cmd_gunzip, shell=True)
-                        # todo: remove
-                        subprocess.call(gz_cmd, shell=True)
-                    except subprocess.CalledProcessError as e:
-                        print(e)
-                        print("gunzip on raw files encountered an error\ntrying next sample")
-                        with open(logfile, "a") as handle:
-                            handle.write(f"# gunzip on raw files failed\n{e}\n")
-
-            # remove old merged file
-            print(f"removing old merged file for {sample_name}")
-            for file in merged_folder.glob(f"{sample_name}*.fastq*"):
-                os.unlink(str(file))
+            # remove old merged files if present
+            merged_search = list(merged_folder.glob(f"{sample_name}*.fastq*"))
+            if merged_search:
+                print(f"removing old merged file for {sample_name}")
+                for file in merged_search:
+                    os.unlink(str(file))
 
             # remove old fasta file
             print(f"removing old fasta file for {sample_name}")
-            for file in fasta_folder.glob(f"{sample_name}*.fasta*"):
-                os.unlink(str(file))
+            fasta_search = list(fasta_folder.glob(f"{sample_name}*.fasta*"))
+            if fasta_search:
+                for file in fasta_search:
+                    os.unlink(str(file))
 
             # remove old dereplicated file
             print(f"removing old dereplicated file for {sample_name}")
-            trunc_name = "_".join(sample_name.split("_")[:-1])
-            for file in derep_folder.glob(f"{trunc_name}*_unique.fasta"):
-                os.unlink(str(file))
+            derep_search = list(derep_folder.glob("*_unique.fasta"))
+            if derep_search
+                for file in derep_search:
+                    os.unlink(str(file))
 
-        search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq"))
+        search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
         if not search_raw_files:
             print(f"No fastq files in target folder for {sample_name}\nTrying next sample\n")
             continue
 
         for j, file_r1 in enumerate(search_raw_files):
-            file_r2 = str(file_r1).replace("_R1.fastq", "_R2.fastq")
+            file_r2 = str(file_r1).replace("_R1.fastq.gz", "_R2.fastq.gz")
             file_r2 = pathlib.Path(file_r2)
             # if can't find the matched paired R2 file, skip and go to next R1 file
             if not file_r2.is_file():
@@ -680,18 +533,18 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     sys.exit("exiting")
 
                 # if both R1 and R2 files are present, continue with the processing
-                pear_outfile = file_r1.name.replace("_R1.fastq", "")
-                pear_outfile = f"{pear_outfile}"
+                pear_outfile = file_r1.name.replace("_R1.fastq.gz", "")
                 merged_file_name = pathlib.Path(merged_folder, pear_outfile)
 
                 # create SLURM file to run PEAR on the cluster
                 id_prefix = sample_name[3:6]
-                unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+                unique_suffix = ''.join(random.choices(string.ascii_lowercase, k=2)).lower()
                 # set job id
                 pear_job_name = f"{id_prefix}{unique_suffix}PR"
                 run_pear = pathlib.Path(dir_with_raw_files, f"run_pear{str(j)}.sh")
-                pear = f"# running PEAR command from file:\n{run_pear}\n /opt/conda2/pkgs/pear-0.9.6-2/bin/pear " \
-                    f"-f {file_r1} -r {file_r2} -o {merged_file_name} -p 0.001 -j 4 -n 300\n"
+                pear = f"/opt/conda2/pkgs/pear-0.9.6-2/bin/pear  -f {file_r1} -r {file_r2} -o {merged_file_name} " \
+                    f"-p 0.001 -j {threads} -n 300\n"
+                meged_outfile = pathlib.Path(f"{merged_file_name}.assembled.fastq")
                 with open(run_pear, "w") as handle:
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=node01\n")
@@ -701,52 +554,27 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
                 with open(logfile, "a") as handle:
                     handle.write(f"# running PEAR\n{pear}\n")
-                cmd_pear = f"sbatch -J {pear_job_name} {run_pear} --wait"
-                try:
-                    print("running PEAR")
-                    # to do
-                    subprocess.call(cmd_pear, shell=True)
-                    # todo: remove
-                    # subprocess.call(pear, shell=True)
-                except subprocess.CalledProcessError as e:
-                    print(e)
-                    print("PEAR encountered an error\ntrying next sample")
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# PEAR failed\n{e}\n")
-                    continue
+                cmd_pear = f"sbatch -J {pear_job_name} {run_pear} --ntasks=1 --cpus-per-task={threads} --parsable"
 
-                # compress 1_raw_data if the merging was successful
-                merged_files_list = list(pathlib.Path(merged_folder).glob(f"{sample_name}.assembled.fastq"))
-                print(f"no merged files found in {merged_files_list}")
-                if merged_files_list:
-                    print("gzipping raw files")
-                    # set job id
-                    gzip_job_name = f'gzip{str(j)}'
-                    run_gzip = pathlib.Path(path, "scripts", f"run_gzip_raw{str(j)}.sh")
-                    gzip = f"gzip {file_r1} {file_r2}"
-                    with open(run_gzip, "w") as handle:
-                        handle.write("#!/bin/sh\n")
-                        handle.write("#SBATCH -J gzip\n")
-                        handle.write("#SBATCH --mem=1000\n")
-                        handle.write(f"{gzip}\n")
-                    os.chmod(run_gzip, 0o777)
-
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# gzip on raw data files\n{gzip}\n")
-
-                    cmd_gzip = f"sbatch -J {gzip_job_name} {run_gzip} --wait"
-                    try:
-                        # subprocess.call(cmd_gzip, shell=True)
-                        # todo: remove
-                        subprocess.call(gzip, shell=True)
-                    except subprocess.CalledProcessError as e:
-                        print(e)
-                        print("gzip of raw files failed\ntrying next sample")
-                        with open(logfile, "a") as handle:
-                            handle.write(f"# gzip of raw files failed\n{e}\n")
-                        continue
-                else:
-                    print(f"no merged files found in {merged_files_list}")
+                print("running PEAR")
+                pear_slurm_id = subprocess.check_output(cmd_pear, shell=True).decode(sys.stdout.encoding).strip()
+                pear_slurm_id = pear_slurm_id.split(" ")[-1]
+                print(pear_slurm_id)
+                check = True
+                wait_time = 0
+                while check:
+                    print("checking if merged output is ready")
+                    if meged_outfile.is_file():
+                        check = False
+                        print("ready")
+                    else:
+                        print("waiting 2 min")
+                        time.sleep(10)
+                    if wait_time < 10:
+                        wait_time += 2
+                    else:
+                        print(f"{meged_outfile} not found in {merged_folder}")
+                        sys.exit("waiting time ran out")
 
                 # remove unmerged files
                 print("removing unmerged files")
@@ -760,43 +588,49 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
                 # convert to fasta
                 print("converting fastq to fasta")
-                if len(merged_files_list) > 1:
-                    # this should not be possible, since any existing file should have been overwritten
-                    print(f"multiple merged files found for this sample:\n{merged_files_list}\n")
-                    sys.exit("exiting")
-                elif len(merged_files_list) == 0:
-                    print(f"no merged files found for this sample:\n{sample_name}")
-                    sys.exit("exiting")
-                else:
-                    fastq = merged_files_list[0]
-
-                fasta = f"{str(fastq.stem)}.fasta"
+                fasta = f"{str(meged_outfile.stem)}.fasta"
                 fasta = pathlib.Path(fasta_folder, fasta)
                 # fix file permissions for output
-                os.chmod(str(fastq), 0o666)
+                os.chmod(str(meged_outfile), 0o666)
                 # create fastq to fasta SLURM file
                 id_prefix = sample_name[3:6]
                 unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
                 # set job id
                 fastq_fasta_job_name = f"{id_prefix}{unique_suffix}Fa"
                 run_fastq_fasta = pathlib.Path(merged_folder, f"run_convert_to_fasta{str(j)}.sh")
-                convert_fastq = f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --fastq_filter {fastq} " \
-                    f"--fastaout  {fasta} --fasta_width 0 --notrunclabels --threads 4"
+                convert_fastq = f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --fastq_filter {meged_outfile} " \
+                    f"--fastaout  {fasta} --fasta_width 0 --notrunclabels --threads {threads}"
                 with open(run_fastq_fasta, "w") as handle:
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=node01\n")
                     handle.write("#SBATCH --mem=1000\n")
                     handle.write(f"{convert_fastq}\n")
+
                 os.chmod(run_fastq_fasta, 0o777)
 
                 with open(logfile, "a") as handle:
-                    handle.write(f"# Converting fasatq to fasta:\n{convert_fastq}\n")
+                    handle.write(f"# Converting fastq to fasta:\n{convert_fastq}\n")
 
-                cmd_fastq_fasta = f"sbatch -J {fastq_fasta_job_name} {run_fastq_fasta} --wait"
+                cmd_fastq_fasta = f"sbatch --depend=afterany:{pear_slurm_id} -J {fastq_fasta_job_name} " \
+                    f"{run_fastq_fasta} --ntasks=1 --cpus-per-task={threads}"
                 try:
-                    subprocess.call(cmd_fastq_fasta, shell=True)
-                    # todo: remove
-                    # subprocess.call(f"vsearch --fastq_filter {fastq} --fastaout  {fasta} --fasta_width 0 --notrunclabels --threads 4", shell=True)
+                    fastq_fasta_slurm_id = subprocess.check_output(cmd_fastq_fasta, shell=True)\
+                        .decode(sys.stdout.encoding).strip()
+                    fastq_fasta_slurm_id = fastq_fasta_slurm_id.split(" ")[-1]
+                    check = True
+                    wait_time = 0
+                    while check:
+                        print("checking if raw fastq to fasta output is ready")
+                        if fasta.is_file():
+                            check = False
+                            print("ready")
+                        else:
+                            print("waiting 2 min")
+                            time.sleep(10)
+                        if wait_time < 10:
+                            wait_time += 2
+                        else:
+                            sys.exit("waiting time ran out")
                 except subprocess.CalledProcessError as e:
                     print(e)
                     print("vsearch fastq to fasta encountered an error\ntrying next sample")
@@ -804,38 +638,56 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                         handle.write(f"vsearch fastq to fasta failed\n{e}\n")
                     continue
                 # compress pear if the merged file was successfully converted to a fasta file
-                if fasta.is_file():
-                    # fix file permissions for output
-                    os.chmod(str(fasta), 0o666)
-                    # add file to list of fastas to derep (or just be moved to derep folder if only a single fasta)
-                    print("compressing merged fastq file")
-                    # set job id
-                    gzip_job_name = f'gzip{str(j)}'
-                    run_gzip = pathlib.Path(path, "scripts", "run_gzip_merged.sh")
-                    cmd_gzip = f"gzip {fastq}"
-                    with open(run_gzip, "w") as handle:
-                        handle.write("#!/bin/sh\n")
-                        handle.write("#SBATCH -J gzip\n")
-                        handle.write("#SBATCH --mem=1000\n")
-                        handle.write(f"{cmd_gzip}\n")
-                    os.chmod(run_gzip, 0o777)
-
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# gzip on merged file:\n{cmd_gzip}\n")
-
-                    cmd_gzip = f"sbatch -J {gzip_job_name} {run_gzip} --wait"
-                    try:
-                        # subprocess.call(cmd_gzip, shell=True)
-                        # todo: remove
-                        subprocess.call(cmd_gzip, shell=True)
-                    except subprocess.CalledProcessError as e:
-                        print(e)
-                        print("gzip on merged file encountered an error\ntrying next sample")
-                        with open(logfile, "a") as handle:
-                            handle.write(f"# gzip on merged file failed\n{e}\n")
-                else:
-                    print("could not find the fasta file\nconversion of fastq to fasta might have failed\n")
-                    sys.exit("exiting")
+                # if fasta.is_file():
+                #     # fix file permissions for output
+                #     os.chmod(str(fasta), 0o666)
+                #     # add file to list of fastas to derep (or just be moved to derep folder if only a single fasta)
+                #     print("compressing merged fastq file")
+                #     # set job id
+                #     gzip_job_name = f'gzip{str(j)}'
+                #     run_gzip = pathlib.Path(path, "scripts", "run_gzip_merged.sh")
+                #     cmd_gzip = f"gzip {meged_outfile}"
+                #     with open(run_gzip, "w") as handle:
+                #         handle.write("#!/bin/sh\n")
+                #         handle.write("#SBATCH -J gzip\n")
+                #         handle.write("#SBATCH --mem=1000\n")
+                #         handle.write(f"{cmd_gzip}\n")
+                #     os.chmod(run_gzip, 0o777)
+                #
+                #     with open(logfile, "a") as handle:
+                #         handle.write(f"# gzip on merged file:\n{cmd_gzip}\n")
+                #
+                #     cmd_gzip = f"sbatch --depend=afterany:{fastq_fasta_slurm_id} -J {gzip_job_name} {run_gzip}"
+                #     try:
+                #         subprocess.call(cmd_gzip, shell=True)
+                #         fastq_fasta_slurm_id = subprocess.check_output(cmd_fastq_fasta, shell=True).decode(
+                #             sys.stdout.encoding).strip()
+                #         fastq_fasta_slurm_id = fastq_fasta_slurm_id.split(" ")[-1]
+                #         # # todo: remove
+                #         # subprocess.call(cmd_gzip, shell=True)
+                #         check = True
+                #         wait_time = 0
+                #         while check:
+                #             print("checking if gzip on merged file is ready")
+                #             if check_file.is_file():
+                #                 check = False
+                #                 os.unlink(check_file)
+                #                 print("ready")
+                #             else:
+                #                 print("waiting 2 min")
+                #                 time.sleep(10)
+                #             if wait_time < 10:
+                #                 wait_time += 2
+                #             else:
+                #                 sys.exit("waiting time ran out")
+                #     except subprocess.CalledProcessError as e:
+                #         print(e)
+                #         print("gzip on merged file encountered an error\ntrying next sample")
+                #         with open(logfile, "a") as handle:
+                #             handle.write(f"# gzip on merged file failed\n{e}\n")
+                # else:
+                #     print("could not find the fasta file\nconversion of fastq to fasta might have failed\n")
+                #     sys.exit("exiting")
 
     # move fastas to target dir and do dereplication if needed
     with open(logfile, "a") as handle:
@@ -885,6 +737,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     handle.write("#!/bin/sh\n")
                     handle.write("#SBATCH -J gzip\n")
                     handle.write("#SBATCH --mem=1000\n")
+                    handle.write("#SBATCH --wait\n")
                     handle.write(f"{concat_cmd}\n")
                 os.chmod(run_cat, 0o777)
 
@@ -893,9 +746,23 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
                 cmd_cat = f"sbatch -J {cat_job_name} {run_cat} --wait"
                 try:
-                    # subprocess.call(cmd_cat, shell=True)
+                    subprocess.call(cmd_cat, shell=True)
+                    check = True
+                    wait_time = 0
+                    while check:
+                        print("checking if concat file is ready")
+                        if concated_outfile.is_file():
+                            check = False
+                            print("ready")
+                        else:
+                            print("waiting 2 min")
+                            time.sleep(10)
+                        if wait_time < 10:
+                            wait_time += 2
+                        else:
+                            sys.exit("waiting time ran out")
                     # todo: remove
-                    subprocess.call(concat_cmd, shell=True)
+                    # subprocess.call(concat_cmd, shell=True)
                 except subprocess.CalledProcessError as e:
                     print(e)
                     print("concatenating files encountered an error\ntrying next sample")
@@ -922,7 +789,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         # create fastq to fasta SLURM file
         run_derep = pathlib.Path(fasta_folder, "run_derep.sh")
         derep_cmd = f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --sizeout --derep_fulllength {file_to_dereplicate}" \
-            f" --output {dereplicated_file} --fasta_width 0 --notrunclabels --threads 4 "
+            f" --output {dereplicated_file} --fasta_width 0 --notrunclabels --threads {threads}"
         with open(run_derep, "w") as handle:
             handle.write("#!/bin/sh\n")
             handle.write("##SBATCH -w, --nodelist=node01\n")
@@ -933,12 +800,23 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         with open(logfile, "a") as handle:
             handle.write(f"# running dereplication\n{str(derep_cmd)}\n")
 
-        cmd_derep = f"sbatch -J {derep_job_name} {run_derep} --wait"
+        cmd_derep = f"sbatch -J {derep_job_name} {run_derep} --wait --ntasks=1 --cpus-per-task={threads}"
         try:
             subprocess.check_output(cmd_derep, shell=True)
-            # # todo: remove
-            # subprocess.call(f"vsearch --sizeout --derep_fulllength {file_to_dereplicate} "
-            #                 f"--output {dereplicated_file} --fasta_width 0 --notrunclabels --threads 4 ", shell=True)
+            check = True
+            wait_time = 0
+            while check:
+                print("checking if dereplication file is ready")
+                if dereplicated_file.is_file():
+                    check = False
+                    print("ready")
+                else:
+                    print("waiting 2 min")
+                    time.sleep(10)
+                if wait_time < 10:
+                    wait_time += 2
+                else:
+                    sys.exit("waiting time ran out")
             # fix file permissions for output
             os.chmod(str(dereplicated_file), 0o666)
         except subprocess.CalledProcessError as e:
@@ -987,9 +865,6 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
 
         sonar_version = item[2]
         project_folder = dir_with_sonar1_files.parents[3]
-
-        with open(logfile, "a") as handle:
-            handle.write(f"# running sonar1 on {sample_name}\n")
 
         # check that only one file in target dir
         search_derep_fastas = list(dir_with_sonar1_files.glob("*.fasta"))
@@ -1040,12 +915,12 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
         os.chmod(str(run_sonar_p1), 0o777)
 
         with open(logfile, "a") as handle:
-            handle.write(f"# running Sonar1 command from file:\n{str(sonar_p1_cmd)}\n")
+            handle.write(f"# running Sonar P1 command from file:\n{str(sonar_p1_cmd)}\n")
         sonar1_run_cmd = f"sbatch -J {sonar1_job_name} {run_sonar_p1} --wait"
         try:
             # change into sonar P1 targer directory
             os.chdir(dir_with_sonar1_files)
-            subprocess.call(sonar1_run_cmd, shell=True)
+            # subprocess.call(sonar1_run_cmd, shell=True)
 
         except subprocess.CalledProcessError as e:
             print(e)
@@ -1101,8 +976,6 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                 print(f"No Sonar P1 files detected in: {dir_with_sonar1_files}")
                 sys.exit()
 
-        with open(logfile, "a") as handle:
-            handle.write(f"running Sonar P1 on {sample_name}\n")
         to_run = [(target_folder_full_ab, fullab_name, mab_sequence_fullab),
                   (target_folder_crdh3, cdr3_name, mab_sequence_cdr3)]
         mab = ["fullab", "cdr3"]
@@ -1210,11 +1083,11 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             with open(logfile, "a") as handle:
                 handle.write(f"running sonar P2\n{sonar2_cmd}\n")
 
-            os.chdir(target_folder)
             sonar_p2_call = f"sbatch -J {sonar2_job_name} {sonar_p2_run} --wait"
             try:
                 # run sonar2
-                subprocess.call(sonar_p2_call, shell=True)
+                os.chdir(target_folder)
+                # subprocess.call(sonar_p2_call, shell=True)
             except subprocess.CalledProcessError as e:
                 print(e)
                 print("There was an error running sonar P2\nTrying next sample")
@@ -1260,22 +1133,15 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
         print("No jobs were found in the settings file\nCheck that the file format was correct "
               "and that it contains entries")
         sys.exit("exiting")
-    else:
-        with open(log_file, "a") as handle:
-            handle.write("# No fastq (fastq.gz/fastq.zip) files in 0new_data\n")
 
     # generate the job lists
     command_call_processing, command_call_sonar_1, command_call_sonar_2 = make_job_lists(path, list_all_settings,
                                                                                          log_file)
     # only run sample processing if one or more files were specified
     if command_call_processing:
-        print("processing samples")
-
-        # unzip_files(dir_with_files)
-        unzip_files(path, log_file)
-
         # move files from 0_new_data, into correct directory, if necessary
         move_raw_data(path, settings_dataframe, log_file)
+
         # get rid of duplicate entries in sample processing list, if present
         command_call_processing = list(set(tuple(x) for x in command_call_processing))
         step_1_run_sample_processing(path, command_call_processing, log_file)
