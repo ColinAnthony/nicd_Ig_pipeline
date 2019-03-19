@@ -934,7 +934,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
         cmd_derep = f"sbatch -J {derep_job_name} {run_derep} --ntasks=1 --cpus-per-task={threads} --parsable --wait"
         try:
-            subprocess.check_output(cmd_derep, shell=True)
             derep_slurm_id = subprocess.check_output(cmd_derep, shell=True).decode(sys.stdout.encoding).strip()
             derep_slurm_id = derep_slurm_id.split(" ")[-1]
             derep_slurm_out_file = pathlib.Path(path, f"slurm-{derep_slurm_id}.out")
@@ -1125,7 +1124,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
     :return:
     """
     gb = (1024 * 1024) * 1024
-    sleep_time_sec = 10
+    sleep_time_sec = 60 * 2
     for item in command_call_sonar_2:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
@@ -1200,7 +1199,8 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                                              f"# Free space is {free_space}Gb {percent_free}%\n"
                                              f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
                             sys.exit("exiting")
-                            # set job id
+                        # set job id
+                        sonar1_cp_unique_id = uuid.uuid4()
                         sonar_p1_cp = f'snr1cp'
                         run_snr1cp = pathlib.Path(parent_dir, "scripts", "run_sonar1_cp.sh")
                         # copy files to desired directory
@@ -1212,6 +1212,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                             handle.write("#SBATCH --mem=1000\n")
                             handle.write(f"{cmd_copy_work}\n")
                             handle.write(f"{cmd_copy_output}\n")
+                            handle.write(f"echo {sonar1_cp_unique_id}")
                         os.chmod(run_snr1cp, 0o777)
 
                         with open(logfile, "a") as handle:
@@ -1221,7 +1222,24 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                         cmd_snr1_cp = f"sbatch -J {sonar_p1_cp} {run_snr1cp} --wait"
                         try:
                             subprocess.call(cmd_snr1_cp, shell=True)
-
+                            sonar1_cp_slurm_id = subprocess.check_output(cmd_snr1_cp, shell=True).decode(
+                            sys.stdout.encoding).strip()
+                            sonar1_cp_slurm_id = sonar1_cp_slurm_id.split(" ")[-1]
+                            sonar1_cp_outfile = pathlib.Path(parent_dir, f"slurm-{sonar1_cp_slurm_id}.out")
+                            while True:
+                                print("checking if dereplication file is ready")
+                                if sonar1_cp_outfile.is_file():
+                                    with open(sonar1_cp_outfile, 'rb') as slurm_out:
+                                        sonar1_cp_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
+                                    if sonar1_cp_check == str(sonar1_cp_unique_id):
+                                        print("sonar p1 cp completed")
+                                        break
+                                    else:
+                                        print("still waiting for sonar p1 to complete")
+                                        time.sleep(sleep_time_sec)
+                                else:
+                                    print("waiting for sonar p1 cp to complete")
+                                    time.sleep(sleep_time_sec)
                         except subprocess.CalledProcessError as e:
                             print(e)
                             print("There was an error copying the sonar P1 files to the sonar P2 directory")
