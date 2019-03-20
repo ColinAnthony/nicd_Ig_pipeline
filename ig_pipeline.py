@@ -277,6 +277,7 @@ def extract_settings_make_folders(path, settings_dict, logfile):
     function to extract the settings information for each entry and call the make folders function
     :param path: path to project folder
     :param settings_dict: the settings in dictionary format
+    :param logfile: (str) path and name of the logfile
     :return: list of lists for the job entries
     """
     list_all_jobs_to_run = []
@@ -1091,7 +1092,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, simultaneous_sonar_p1_jobs, logfil
                 handle.write(f"# running Sonar P1 command from file:\n{str(sonar_version_setting)}\n")
 
             # run only 3 sonar p1 jobs at a time
-            if len(slurm_submission_jobs) > simultaneous_sonar_p1_jobs -1:
+            if len(slurm_submission_jobs) > simultaneous_sonar_p1_jobs - 1:
                 with open(logfile, "a") as handle:
                     handle.write(f"# Max number of sonar P1 jobs are running\n"
                                  f"# waiting for completion of sonar p1 jobs before starting the next one")
@@ -1249,8 +1250,8 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                         cmd_snr1_cp = f"sbatch -J {sonar_p1_cp} {run_snr1cp} --wait"
                         try:
                             subprocess.call(cmd_snr1_cp, shell=True)
-                            sonar1_cp_slurm_id = subprocess.check_output(cmd_snr1_cp, shell=True).decode(
-                            sys.stdout.encoding).strip()
+                            sonar1_cp_slurm_id = subprocess.check_output(cmd_snr1_cp, shell=True)\
+                                .decode(sys.stdout.encoding).strip()
                             sonar1_cp_slurm_id = sonar1_cp_slurm_id.split(" ")[-1]
                             sonar1_cp_outfile = pathlib.Path(parent_dir, f"slurm-{sonar1_cp_slurm_id}.out")
                             while True:
