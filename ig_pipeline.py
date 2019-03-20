@@ -365,15 +365,16 @@ def move_raw_data(path, settings_dataframe, logfile):
 
     # find where to move each raw file and move it to the right folder
     if not raw_files:
-        print("No fastq (fastq.gz/fastq.zip) files in 0new_data")
+        print("No fastq/fastq.gz files in 0new_data")
         with open(logfile, "a") as handle:
-            handle.write("# No fastq (fastq.gz/fastq.zip) files in 0new_data\n")
+            handle.write("# No fastq/fastq.gz files in 0new_data\n")
     else:
         for file in raw_files:
             full_name = file
             name = file.stem
             parts = name.split("_")
-
+            suff = file.suffixes
+            suffix = ''.join(suff)
             if len(parts) < 6:
                 print(parts)
                 print("name formatted incorrectly")
@@ -383,11 +384,11 @@ def move_raw_data(path, settings_dataframe, logfile):
 
             if parts[-1] == 'R1' or parts[-1] == 'R2':
                 # name already formatted
-                copy_name = f"{name}.fastq"
+                copy_name = f"{name}{suffix}"
                 search_name = "_".join(parts[:5])
             else:
                 search_name = "_".join(parts[:5])
-                copy_name = "_".join(parts[:5]) + f"_{parts[7]}.fastq"
+                copy_name = "_".join(parts[:5]) + f"_{parts[7]}{suffix}"
 
             fields = settings_dataframe.loc[settings_dataframe['sample_name'] == search_name].head(1)
             if fields.empty:
@@ -405,7 +406,8 @@ def move_raw_data(path, settings_dataframe, logfile):
 
             # copy the file to the correct folder
             mv = f"mv {file} {destination}"
-
+            print(mv)
+            input("enter")
             with open(logfile, "a") as handle:
                 handle.write(f"\n# moving files to target folder\n{mv}\n")
 
@@ -502,7 +504,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     for item in command_call_processing:
         sample_name = item[0]
         print(f"\n{'-'*10}\n# Processing {sample_name}\n\n")
-
         dir_with_raw_files = item[1]
         parent_path = dir_with_raw_files.parent
         merged_folder = pathlib.Path(parent_path, "2_merged_filtered")
@@ -634,12 +635,12 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 pear_job_name = f"{id_prefix}{unique_suffix}PR"
                 run_pear = pathlib.Path(dir_with_raw_files, f"run_pear{str(j)}.sh")
                 pear = f"/opt/conda2/pkgs/pear-0.9.6-2/bin/pear  -f {file_r1} -r {file_r2} -o {merged_file_name} " \
-                    f"-p 0.001 -j {threads} -n 300\n"
+                    f"-p 0.001 -n 300\n"
                 meged_outfile = pathlib.Path(f"{merged_file_name}.assembled.fastq")
                 with open(run_pear, "w") as handle:
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=node01\n")
-                    handle.write("#SBATCH --mem=1000\n")
+                    handle.write("#SBATCH --mem=4000\n")
                     handle.write(f"{pear}\n")
                     handle.write(f"echo {pear_unique_id}")
                 os.chmod(str(run_pear), 0o777)
@@ -810,7 +811,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     print("could not find the fasta file\nconversion of fastq to fasta might have failed\n"
                           "trying next sample")
                     continue
-
     # collect all the files that will be dereplicated
     files_to_derep_dict = collections.defaultdict(list)
     for item in command_call_processing:
