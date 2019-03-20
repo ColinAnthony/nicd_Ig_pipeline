@@ -975,15 +975,17 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             handle.write(f"# processing of sample completed\n")
 
 
-def step_2_run_sonar_p1(command_call_sonar_1, logfile):
+def step_2_run_sonar_p1(command_call_sonar_1, simultaneous_sonar_p1_jobs, logfile):
     """
     function to automate calling sonar1 on NGS Ab dereplicated fasta files
     :param command_call_sonar_1: list of samples to run sonar1 on
+    :param simultaneous_sonar_p1_jobs(int) number of simultaneous sonar P1 slurm submissions allowed
     :param logfile: (str) path and name of the logfile
     :return:
     """
     gb = (1024 * 1024) * 1024
-    sleep_time_sec = 60 #* 60
+    slurm_submission_jobs = []
+    sleep_time_sec = 60 * 10
     for item in command_call_sonar_1:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
@@ -1044,6 +1046,16 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
                         f"# you expected to need up to {fasta_size * 10}Gb for sonar P1")
                 sys.exit("exiting")
 
+            # search for finished sonar P1 jobs and remove from list
+            for indx, [job_file, unique_id] in slurm_submission_jobs:
+                print("checking if any sonar P1 jobs have completed")
+                if job_file.is_file():
+                    with open(job_file, 'rb') as slurm_out:
+                        sonar_p1_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
+                    if sonar_p1_check == str(unique_id):
+                        print("a sonar P1 job has completed")
+                        del slurm_submission_jobs[indx]
+
             id_prefix = sample_name[3:6]
             unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
             # set job id
@@ -1077,35 +1089,46 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
 
             with open(logfile, "a") as handle:
                 handle.write(f"# running Sonar P1 command from file:\n{str(sonar_version_setting)}\n")
+
+            # run only 3 sonar p1 jobs at a time
+            if len(slurm_submission_jobs) > simultaneous_sonar_p1_jobs -1:
+                with open(logfile, "a") as handle:
+                    handle.write(f"# Max number of sonar P1 jobs are running\n"
+                                 f"# waiting for completion of sonar p1 jobs before starting the next one")
+                check = True
+                while check:
+                    for i, [job_file, job_id] in slurm_submission_jobs:
+                        print("checking if any sonar p1 jobs have finished")
+                        if job_file.is_file():
+                            with open(job_file, 'rb') as slurm_out:
+                                sonar1_cp_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
+                            if sonar1_cp_check == str(job_id):
+                                print("sonar p1 cp completed")
+                                with open(logfile, "a") as handle:
+                                    handle.write(f"# sonar P1 job finished\n# removing it from list of running jobs\n")
+                                # remove the job entry from the list
+                                del slurm_submission_jobs[i]
+                                # break out of while loop after checking the test of the jobs
+                                check = False
+                            else:
+                                print("still waiting for sonar p1 to complete")
+                                time.sleep(sleep_time_sec)
+                        else:
+                            print("waiting for sonar p1 cp to complete")
+                            time.sleep(sleep_time_sec)
+                with open(logfile, "a") as handle:
+                    handle.write(f"# submitting next sonar P1 job\n")
+
             sonar1_run_cmd = f"sbatch -J {sonar1_job_name} {run_sonar_p1} --parsable --wait"
             try:
                 # change into sonar P1 targer directory
                 os.chdir(dir_with_sonar1_files)
-                sonar_p1_slurm_id = subprocess.check_output(sonar1_run_cmd, shell=True).decode(sys.stdout.encoding).strip()
+                sonar_p1_slurm_id = subprocess.check_output(sonar1_run_cmd, shell=True)\
+                    .decode(sys.stdout.encoding).strip()
                 sonar_p1_slurm_id = sonar_p1_slurm_id.split(" ")[-1]
                 sonar_p1_slurm_out_file = pathlib.Path(dir_with_sonar1_files, f"slurm-{sonar_p1_slurm_id}.out")
-                while True:
-                    print("checking if sonar P1 has completed")
-                    if sonar_p1_slurm_out_file.is_file():
-                        with open(sonar_p1_slurm_out_file, 'rb') as slurm_out:
-                            sonar_p1_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                        if sonar_p1_check == str(sonar_p1_unique_id):
-                            print("sonar P1 completed")
-                            os.chdir(project_folder)
-                            break
-                        else:
-                            print("still waiting for sonar P1 to complete")
-                            time.sleep(sleep_time_sec)
-                    else:
-                        print("waiting for sonar P1 to complete")
-                        time.sleep(sleep_time_sec)
+                slurm_submission_jobs.append([sonar_p1_slurm_out_file, sonar_p1_slurm_id])
 
-                if not sonar_p1_slurm_out_file.is_file():
-                    print("could not find sonar P1 slurm file\ntrying next sample")
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# sonar P1 failed\n")
-                    os.chdir(project_folder)
-                    continue
             except subprocess.CalledProcessError as e:
                 print(e)
                 print("Sonar P1 encountered an error\ntrying next sample")
@@ -1115,12 +1138,13 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
                 continue
 
 
-def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, logfile):
+def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, simultaneous_sonar_p2_jobs, logfile):
     """
     function to automate calling sonar1 on NGS Ab dereplicated fasta files
     :param command_call_sonar_2: list of samples to run sonar2 on
     :param fasta_sequences: (dict) dict of all the mAb fasta sequences (full and crd3)
     :param run_sonar2_trunc: (Bool) True if flag is set, default is False, will run sonar_trunc call if True
+    :param simultaneous_sonar_p2_jobs(int) number of simultaneous sonar P1 slurm submissions allowed
     :param fasta_sequences: (dict) dict containing key = seq name, value = sequence for all known mAb sequences
     :param logfile: (str) path and name of the logfile
     :return:
@@ -1312,6 +1336,8 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     :param fasta_file: (str) the path and name of the fasta file with your mAb sequences
     :param run_sonar2_trunc: (Bool) set flag to true to run sonar_trunc
     """
+    simultaneous_sonar_p1_jobs = 3
+    simultaneous_sonar_p2_jobs = 3
     path = pathlib.Path(path).absolute()
     if not path.is_dir():
         print("path to project folder is not a directory\n")
@@ -1377,7 +1403,7 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
             else:
                 removed_sonor1_duplicates_check.append(sonar1_dir)
                 dedup_sonar1_call.append([sample_name, sonar1_dir, chain])
-        step_2_run_sonar_p1(dedup_sonar1_call, log_file)
+        step_2_run_sonar_p1(dedup_sonar1_call, log_file, simultaneous_sonar_p1_jobs)
     else:
         print("no sonar P1 jobs found")
 
@@ -1385,7 +1411,8 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     # if command_call_sonar_2:
     #     if fasta_file is not None:
     #         fasta_sequences = fasta_to_dct(fasta_file)
-    #         step_3_run_sonar_2(path, command_call_sonar_2, fasta_sequences, run_sonar2_trunc, log_file)
+    #         step_3_run_sonar_2(path, command_call_sonar_2, fasta_sequences, run_sonar2_trunc,
+    #                            simultaneous_sonar_p2_jobs, log_file)
     #     else:
     #         print("no fasta file specified for Sonar P2 to run\n")
     #         sys.exit("exiting")
