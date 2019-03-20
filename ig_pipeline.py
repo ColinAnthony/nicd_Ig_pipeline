@@ -1306,6 +1306,10 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     :param run_sonar2_trunc: (Bool) set flag to true to run sonar_trunc
     """
     path = pathlib.Path(path).absolute()
+    if not path.is_dir():
+        print("path to project folder is not a directory\n")
+        sys.exit("exiting")
+
     # change the cwd to project path
     os.chdir(path)
 
@@ -1316,6 +1320,11 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     # set paths and initialize the log file
     project_name = path.parts[-1]
     settings = pathlib.Path(settings).absolute()
+
+    if not settings.is_file():
+        print("settings file not found\n")
+        sys.exit("exiting")
+
     settings_dataframe = pd.read_csv(settings, sep=None, engine='python')
     time_stamp = str('{:%Y-%m-%d_%H_%M}'.format(datetime.datetime.now()))
     log_file = pathlib.Path(path, f"{time_stamp}_log_file.txt")
