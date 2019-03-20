@@ -314,7 +314,7 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name):
     """
     known_mab_name = "5_" + known_mab_name
 
-    pathlib.Path(path, "scripts").mkdir(mode=0o777, parents=True, exist_ok=True)
+    pathlib.Path(path, lineage, time_point, chain, "scripts").mkdir(mode=0o777, parents=True, exist_ok=True)
 
     pathlib.Path(path, lineage, time_point, chain, "1_raw_data").mkdir(mode=0o777, parents=True, exist_ok=True)
 
@@ -406,8 +406,6 @@ def move_raw_data(path, settings_dataframe, logfile):
 
             # copy the file to the correct folder
             mv = f"mv {file} {destination}"
-            print(mv)
-            input("enter")
             with open(logfile, "a") as handle:
                 handle.write(f"\n# moving files to target folder\n{mv}\n")
 
@@ -500,15 +498,16 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     # Bites to Gb adjustment
     gb = (1024 * 1024) * 1024
     threads = 4
-    sleep_time_sec = 20
+    sleep_time_sec = 60
     for item in command_call_processing:
         sample_name = item[0]
         print(f"\n{'-'*10}\n# Processing {sample_name}\n\n")
         dir_with_raw_files = item[1]
-        parent_path = dir_with_raw_files.parent
-        merged_folder = pathlib.Path(parent_path, "2_merged_filtered")
-        fasta_folder = pathlib.Path(parent_path, "3_fasta")
-        derep_folder = pathlib.Path(parent_path, "4_dereplicated")
+        chain_path = dir_with_raw_files.parent
+        script_colder = pathlib.Path(chain_path, "scripts")
+        merged_folder = pathlib.Path(chain_path, "2_merged_filtered")
+        fasta_folder = pathlib.Path(chain_path, "3_fasta")
+        derep_folder = pathlib.Path(chain_path, "4_dereplicated")
 
         # check for zipped files
         search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R*.fastq*"))
@@ -554,12 +553,12 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 # set job id
                 gz_unique_id = uuid.uuid4()
                 gzip_job_name = f'gzipRaw'
-                run_gzip = pathlib.Path(path, "scripts", "run_gzip_raw.sh")
+                run_gzip = pathlib.Path(script_colder, "run_gzip_raw.sh")
                 cmd_gz = f"gzip {dir_with_raw_files}/*.fastq"
                 with open(run_gzip, "w") as handle:
                     handle.write("#!/bin/sh\n")
                     handle.write("#SBATCH -J gzip\n")
-                    handle.write("#SBATCH --mem=1000\n")
+                    handle.write("#SBATCH --mem=1000\n\n")
                     handle.write(f"{cmd_gz}\n")
                     handle.write(f"echo {gz_unique_id}")
                 os.chmod(run_gzip, 0o777)
@@ -633,14 +632,14 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 # set job id
                 pear_unique_id = uuid.uuid4()
                 pear_job_name = f"{id_prefix}{unique_suffix}PR"
-                run_pear = pathlib.Path(dir_with_raw_files, f"run_pear{str(j)}.sh")
+                run_pear = pathlib.Path(script_colder, f"run_pear{str(j)}.sh")
                 pear = f"/opt/conda2/pkgs/pear-0.9.6-2/bin/pear  -f {file_r1} -r {file_r2} -o {merged_file_name} " \
                     f"-p 0.001 -n 300\n"
                 meged_outfile = pathlib.Path(f"{merged_file_name}.assembled.fastq")
                 with open(run_pear, "w") as handle:
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=node01\n")
-                    handle.write("#SBATCH --mem=4000\n")
+                    handle.write("#SBATCH --mem=4000\n\n")
                     handle.write(f"{pear}\n")
                     handle.write(f"echo {pear_unique_id}")
                 os.chmod(str(run_pear), 0o777)
@@ -709,13 +708,13 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 # set job id
                 convert_unique_id = uuid.uuid4()
                 fastq_fasta_job_name = f"{id_prefix}{unique_suffix}Fa"
-                run_fastq_fasta = pathlib.Path(merged_folder, f"run_convert_to_fasta{str(j)}.sh")
+                run_fastq_fasta = pathlib.Path(script_colder, f"run_convert_to_fasta{str(j)}.sh")
                 convert_fastq = f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --fastq_filter {meged_outfile} " \
                     f"--fastaout  {fasta} --fasta_width 0 --notrunclabels --threads {threads}"
                 with open(run_fastq_fasta, "w") as handle:
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=node01\n")
-                    handle.write("#SBATCH --mem=1000\n")
+                    handle.write("#SBATCH --mem=1000\n\n")
                     handle.write(f"{convert_fastq}\n")
                     handle.write(f"echo {convert_unique_id}")
                 os.chmod(run_fastq_fasta, 0o777)
@@ -759,12 +758,12 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                     # set job id
                     gz_unique_id = uuid.uuid4()
                     gzip_job_name = f'gzip{str(j)}'
-                    run_gzip = pathlib.Path(path, "scripts", "run_gzip_merged.sh")
+                    run_gzip = pathlib.Path(script_colder, "run_gzip_merged.sh")
                     cmd_gzip = f"gzip {meged_outfile}"
                     with open(run_gzip, "w") as handle:
                         handle.write("#!/bin/sh\n")
                         handle.write("#SBATCH -J gzip\n")
-                        handle.write("#SBATCH --mem=1000\n")
+                        handle.write("#SBATCH --mem=1000\n\n")
                         handle.write(f"{cmd_gzip}\n")
                         handle.write(f"echo {gz_unique_id}")
                     os.chmod(run_gzip, 0o777)
@@ -816,13 +815,14 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     for item in command_call_processing:
         sample_name = item[0]
         dir_with_raw_files = item[1]
-        parent_path = dir_with_raw_files.parent
-        files_to_derep_dict[str(parent_path)].append(sample_name)
+        chain_path = dir_with_raw_files.parent
+        files_to_derep_dict[str(chain_path)].append(sample_name)
 
     # for each target folder, assign the relevant variables
-    for folder, sample_name_list in files_to_derep_dict.items():
-        fasta_folder = pathlib.Path(folder, "3_fasta")
-        derep_folder = pathlib.Path(folder, "4_dereplicated")
+    for chain_folder, sample_name_list in files_to_derep_dict.items():
+        scripts_folder = pathlib.Path(chain_folder, "scripts")
+        fasta_folder = pathlib.Path(chain_folder, "3_fasta")
+        derep_folder = pathlib.Path(chain_folder, "4_dereplicated")
         search_fasta_folder = list(pathlib.Path(fasta_folder).glob("*.fasta"))
         primers = []
         name_stem = ''
@@ -852,12 +852,12 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             # set job id
             cat_unique_id = uuid.uuid4()
             cat_job_name = f'concat'
-            run_cat = pathlib.Path(path, "scripts", "run_cat.sh")
+            run_cat = pathlib.Path(scripts_folder, "run_cat.sh")
             concat_cmd = f"{cat_str} >> {concated_outfile}"
             with open(run_cat, "w") as handle:
                 handle.write("#!/bin/sh\n")
                 handle.write("#SBATCH -J gzip\n")
-                handle.write("#SBATCH --mem=1000\n")
+                handle.write("#SBATCH --mem=1000\n\n")
                 handle.write(f"{concat_cmd}\n")
                 handle.write(f"echo {cat_unique_id}")
             os.chmod(run_cat, 0o777)
@@ -918,13 +918,13 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         # set dereplicated outfile name
         dereplicated_file = pathlib.Path(derep_folder, f"{fasta_to_derep_name_stem}_unique.fasta")
         # create fastq to fasta SLURM file
-        run_derep = pathlib.Path(fasta_folder, "run_derep.sh")
+        run_derep = pathlib.Path(scripts_folder, "run_derep.sh")
         derep_cmd = f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --sizeout --derep_fulllength {file_to_dereplicate}" \
             f" --output {dereplicated_file} --fasta_width 0 --notrunclabels --threads {threads}"
         with open(run_derep, "w") as handle:
             handle.write("#!/bin/sh\n")
             handle.write("##SBATCH -w, --nodelist=node01\n")
-            handle.write("#SBATCH --mem=1000\n")
+            handle.write("#SBATCH --mem=1000\n\n")
             handle.write(f"{derep_cmd}\n")
             handle.write(f"echo {derep_unique_id}")
         os.chmod(run_derep, 0o777)
@@ -987,6 +987,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
     for item in command_call_sonar_1:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
+        scripts_folder = pathlib.Path(dir_with_sonar1_files.parent, "scripts")
         dir_with_sonar1_work = pathlib.Path(dir_with_sonar1_files, "work")
         dir_with_sonar1_output = pathlib.Path(dir_with_sonar1_files, "output")
 
@@ -1064,7 +1065,8 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
                                         f"-lib '/opt/conda2/pkgs/sonar/germDB/IgLJ.fa -noD -noC -callFinal' -f"}
 
             sonar_version_setting = sonar_settings[sonar_version]
-            run_sonar_p1 = pathlib.Path(project_folder, "scripts", f"run_sonar_P1_{sonar_version}.sh")
+            run_sonar_p1 = pathlib.Path(scripts_folder, f"run_sonar_P1_{sonar_version}.sh")
+            # todo specify sbatch outpath
             with open(run_sonar_p1, "w") as handle:
                 handle.write("#!/bin/sh\n")
                 handle.write("#SBATCH -w, --nodelist=bio-linux\n")
@@ -1128,6 +1130,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
     for item in command_call_sonar_2:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
+        scripts_folder = pathlib.Path(dir_with_sonar1_files.parent, "scripts")
         parent_dir = dir_with_sonar1_files.parents[3]
         chain = item[2]
         known_mab_name = item[3]
@@ -1202,7 +1205,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                         # set job id
                         sonar1_cp_unique_id = uuid.uuid4()
                         sonar_p1_cp = f'snr1cp'
-                        run_snr1cp = pathlib.Path(parent_dir, "scripts", "run_sonar1_cp.sh")
+                        run_snr1cp = pathlib.Path(scripts_folder, "run_sonar1_cp.sh")
                         # copy files to desired directory
                         cmd_copy_work = f"cp {dir_with_sonar1_work} {target_folder}"
                         cmd_copy_output = f"cp {dir_with_sonar1_output} {target_folder}"
@@ -1258,26 +1261,30 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             id_prefix = sample_name[3:6]
             unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
             # set job id
+            sonar2_unique_id = uuid.uuid4()
             sonar2_job_name = f"{id_prefix}{unique_suffix}S2"
             if run_sonar2_trunc:
                 sonar_p2_run = f"{known_mab_name}_{mab[i]}_sonar_p2_run_trunc.sh"
-                sonar_p2_run = pathlib.Path(parent_dir, sonar_p2_run)
+                sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
                 sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
                     f"-g /opt/conda2/pkgs/sonar/germDB/IgHKLV_cysTruncated.fa -ap muscle -t 4"
                 with open(sonar_p2_run, 'w') as handle:
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=bio-linux\n")
-                    handle.write("#SBATCH --mem=4000\n")
+                    handle.write("#SBATCH --mem=4000\n\n")
                     handle.write(f"{sonar2_cmd}\n")
+                    handle.write(f"echo {sonar2_unique_id}\n")
             else:
                 sonar_p2_run = f"{known_mab_name}_{mab[i]}_sonar_p2_run.sh"
+                sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
                 sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
                     f"-ap muscle -t 4"
                 with open(sonar_p2_run, 'w') as handle:
                     handle.write("#!/bin/sh\n")
                     handle.write("##SBATCH -w, --nodelist=bio-linux\n")
-                    handle.write("#SBATCH --mem=4000\n")
+                    handle.write("#SBATCH --mem=4000\n\n")
                     handle.write(f"{sonar2_cmd}\n")
+                    handle.write(f"echo {sonar2_unique_id}\n")
             os.chmod(str(sonar_p2_run), 0o777)
 
             with open(logfile, "a") as handle:
@@ -1287,7 +1294,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             try:
                 # run sonar2
                 os.chdir(target_folder)
-                # subprocess.call(sonar_p2_call, shell=True)
+                subprocess.call(sonar_p2_call, shell=True)
                 os.chdir(parent_dir)
             except subprocess.CalledProcessError as e:
                 print(e)
