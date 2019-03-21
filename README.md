@@ -1,5 +1,5 @@
 # nicd_Ig_pipeline
-This wrapper script was written to formalize/standardize the NICD antibody sequencing pipeline
+This wrapper script was written to formalize/standardize the NICD antibody NGS data processing pipeline
 
 This script depends on:
  
@@ -50,7 +50,7 @@ If you have two mAb sequences that you want to run a sample against on Sonar P2,
 include an entry for each mAb, as shown in the settings template
 
 
-**To run the pipeline:**
+## **To run the pipeline:**
     
 * create a project folder (usually named after the participant)
 * inside this folder, create a folder called 0_new_data
@@ -80,7 +80,7 @@ include an entry for each mAb, as shown in the settings template
         >CAP255_G3_lambda_cdr3
         AGTGAGTGAG
 
-* run the wrapper script:
+## run the wrapper script:
     * use `screen` or `nohup` as the run times will be long.
     
         If you need to install screen
@@ -112,3 +112,23 @@ include an entry for each mAb, as shown in the settings template
  * do your analysis
  
  
+ 
+ # What does the pipeline do:
+ ## Step 1
+ * makes the required folders
+ * moves all fastq.gz files to the target folders
+ * runs gzip on all fastq files if they are not already gzip'd to save space
+ * runs PEAR an all raw files to merge forward and reverse reads, with quality and length filters
+ * converts all merged files from fastq to fasta
+ * removes unmerged files to save space
+ * runs gzip on all merged files to save space
+ * dereplicates all merged.fasta files
+ 
+ ## Step 2
+ * runs sonar P1 on all dereplicated files from step 1
+ 
+ ## Step 3
+ * copies sonar P1 output to the sonar P2 target folders
+ * runs sonar P2 an all sonar P1 folders
+    * once using the full known Ab sequence
+    * once using the cdr3 region only
