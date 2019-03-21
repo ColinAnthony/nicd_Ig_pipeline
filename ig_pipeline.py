@@ -467,6 +467,40 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
     return command_call_processing, command_call_sonar_1, command_call_sonar_2
 
 
+def check_slurm_jobs(job_name, job_list_to_check, sleep_time_sec, logfile):
+    """
+
+    :param job_name:
+    :param job_list_to_check:
+    :param sleep_time_sec:
+    :param logfile:
+    :return:
+    """
+    print(job_list_to_check)
+    while True:
+        if not job_list_to_check:
+            break
+        else:
+            for indx, [job_file, unique_id] in enumerate(job_list_to_check):
+                if job_file.is_file():
+                    print(job_file)
+                    input("enter")
+                    with open(job_file, 'r') as slurm_out:
+                        slurm_check = list(slurm_out)[-1].strip()
+                    print("slurm file id", slurm_check)
+                    print("expected id", str(unique_id))
+                    input("enter")
+                    if slurm_check == str(unique_id):
+                        # remove the job entry from the list
+                        del job_list_to_check[indx]
+                        with open(logfile, "a") as handle:
+                            handle.write(f"# {job_name}: job on {job_file} has finished\n")
+
+            if job_list_to_check:
+                time.sleep(sleep_time_sec)
+    return True
+
+
 def raw_files_gz(chain_path, sample_name, dir_with_raw_files, script_folder, logfile):
     """
 
@@ -758,39 +792,6 @@ def concat_fasta(chain_path, search_fasta_folder, scripts_folder, concated_outfi
     return cat_slurm_out_file, cat_unique_id
 
 
-def check_slurm_jobs(job_name, job_list_to_check, sleep_time_sec, logfile):
-    """
-
-    :param job_name:
-    :param job_list_to_check:
-    :param sleep_time_sec:
-    :param logfile:
-    :return:
-    """
-
-    while True:
-        if not job_list_to_check:
-            break
-        else:
-            for indx, [job_file, unique_id] in enumerate(job_list_to_check):
-                if job_file.is_file():
-                    print(job_file)
-                    input("enter")
-                    with open(job_file, 'r') as slurm_out:
-                        slurm_check = list(slurm_out)[-1].strip()
-                    print(slurm_check)
-                    input("enter")
-                    if slurm_check == str(unique_id):
-                        # remove the job entry from the list
-                        del job_list_to_check[indx]
-                        with open(logfile, "a") as handle:
-                            handle.write(f"# {job_name}: job on {job_file} has finished\n")
-
-            if job_list_to_check:
-                time.sleep(sleep_time_sec)
-    return True
-
-
 def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar_version, dir_with_sonar1_files,
                   logfile, uniques_fasta):
     id_prefix = sample_name[3:6]
@@ -972,7 +973,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     """
     # Bites to Gb adjustment
     gb = (1024 * 1024) * 1024
-    sleep_time_sec = 60 * 2
+    sleep_time_sec = 60 * 1
 
     # check that raw files are gzipped
     check_gz_raw_jobs = []
@@ -1030,23 +1031,23 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 os.unlink(str(file))
 
         # remove old fasta file
-        with open(logfile, "a") as handle:
-            handle.write(f"removing old fasta file for {sample_name}\n")
         fasta_search = list(fasta_folder.glob(f"{sample_name}*.fasta*"))
         if fasta_search:
+            with open(logfile, "a") as handle:
+                handle.write(f"# removing old fasta file for {sample_name}\n")
             for file in fasta_search:
                 os.unlink(str(file))
 
         # remove old dereplicated file
-        with open(logfile, "a") as handle:
-            handle.write(f"removing old dereplicated file for {sample_name}\n")
         derep_search = list(derep_folder.glob("*_unique.fasta"))
         if derep_search:
+            with open(logfile, "a") as handle:
+                handle.write(f"# removing old dereplicated file for {sample_name}\n")
             for file in derep_search:
                 os.unlink(str(file))
 
         # check for zipped files
-        search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R*.fastq.gz"))
+        search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
         if search_zip_raw_files:
             print("raw files found")
             with open(logfile, "a") as handle:
@@ -1086,8 +1087,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     # check for completion of pear submissions
     print("waiting for pear")
     with open(logfile, "a") as handle:
-        handle.write(f"# waiting for pear merging of reads\n")
-    pear_sleep = sleep_time_sec * 10
+        handle.write(f"# waiting for pear merging of reads to complete\n")
+    pear_sleep = sleep_time_sec
     check_slurm_jobs("pear merge", check_pear_jobs, pear_sleep, logfile)
 
     # remove unmerged files
