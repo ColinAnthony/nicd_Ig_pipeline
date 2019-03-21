@@ -507,11 +507,11 @@ def run_pear(chain_path, sample_name, script_folder, file_r1, file_r2, merged_fi
     # set job id
     pear_unique_id = uuid.uuid4()
     pear_job_name = f"{id_prefix}{unique_suffix}PR"
-    run_pear = pathlib.Path(script_folder, f"run_pear{str(itern)}.sh")
+    pear_script = pathlib.Path(script_folder, f"run_pear{str(itern)}.sh")
     pear = f"/opt/conda2/pkgs/pear-0.9.6-2/bin/pear  -f {file_r1} -r {file_r2} -o {merged_file_name} " \
         f"-p 0.001 -n 300\n"
 
-    with open(run_pear, "w") as handle:
+    with open(pear_script, "w") as handle:
         handle.write("#!/bin/sh\n")
         handle.write("##SBATCH -w, --nodelist=node01\n")
         handle.write("#SBATCH --mem=4000\n\n")
@@ -521,7 +521,7 @@ def run_pear(chain_path, sample_name, script_folder, file_r1, file_r2, merged_fi
 
     with open(logfile, "a") as handle:
         handle.write(f"# running PEAR\n{pear}\n\n")
-    cmd_pear = f"sbatch -J {pear_job_name} {run_pear} --ntasks=1 --parsable --wait"
+    cmd_pear = f"sbatch -J {pear_job_name} {pear_script} --ntasks=1 --parsable --wait"
     try:
         pear_slurm_id = subprocess.check_output(cmd_pear, shell=True).decode(sys.stdout.encoding).strip()
         pear_slurm_id = pear_slurm_id.split(" ")[-1]
@@ -533,7 +533,7 @@ def run_pear(chain_path, sample_name, script_folder, file_r1, file_r2, merged_fi
             handle.write(f"# pear failed\n{e}\n")
         raise e
 
-    return pear_slurm_out_file, pear_slurm_id, pear_unique_id
+    return pear_slurm_out_file, pear_unique_id
 
 
 def raw_files_gz(chain_path, sample_name, dir_with_raw_files, script_folder, logfile):
@@ -566,7 +566,7 @@ def raw_files_gz(chain_path, sample_name, dir_with_raw_files, script_folder, log
             handle.write("#SBATCH --mem=1000\n\n")
             handle.write(f"{cmd_gz}\n")
             handle.write(f"echo {gz_unique_id}")
-        os.chmod(run_gzip, 0o777)
+        os.chmod(str(run_gzip), 0o777)
 
         with open(logfile, "a") as handle:
             handle.write(f"# gzip on raw file:\n{cmd_gz}\n")
@@ -590,7 +590,7 @@ def raw_files_gz(chain_path, sample_name, dir_with_raw_files, script_folder, log
                 handle.write(f"# No fastq files in target folder for {sample_name}\n# Trying next sample\n")
             raise IOError
 
-    return gz_slurm_out_file, gzip_slurm_id, gz_unique_id
+    return gz_slurm_out_file, gz_unique_id
 
 
 def fastq2fasta(chain_path, sample_name, script_folder, fasta, merged_outfile, itern, logfile):
@@ -620,7 +620,7 @@ def fastq2fasta(chain_path, sample_name, script_folder, fasta, merged_outfile, i
         handle.write("#SBATCH --mem=1000\n\n")
         handle.write(f"{convert_fastq}\n")
         handle.write(f"echo {convert_unique_id}")
-    os.chmod(run_fastq_fasta, 0o777)
+    os.chmod(str(run_fastq_fasta), 0o777)
 
     with open(logfile, "a") as handle:
         handle.write(f"# Converting fastq to fasta:\n{convert_fastq}\n")
@@ -639,7 +639,7 @@ def fastq2fasta(chain_path, sample_name, script_folder, fasta, merged_outfile, i
             handle.write(f"# vsearch fastq to fasta failed\n{e}\n")
         raise e
 
-    return fastq_fasta_slurm_out_file, fastq_fasta_slurm_id, convert_unique_id
+    return fastq_fasta_slurm_out_file, convert_unique_id
 
 
 def merged_files_gz(chain_path, script_folder, merged_outfile, itern, logfile):
@@ -663,7 +663,7 @@ def merged_files_gz(chain_path, script_folder, merged_outfile, itern, logfile):
         handle.write("#SBATCH --mem=1000\n\n")
         handle.write(f"{cmd_gzip}\n")
         handle.write(f"echo {gz_unique_id}")
-    os.chmod(run_gzip, 0o777)
+    os.chmod(str(run_gzip), 0o777)
 
     with open(logfile, "a") as handle:
         handle.write(f"# gzip on merged file:\n{cmd_gzip}\n")
@@ -689,7 +689,7 @@ def merged_files_gz(chain_path, script_folder, merged_outfile, itern, logfile):
             handle.write(f"# gzip on merged file failed\n{e}\n")
         raise e
 
-    return gz_merged_slurm_out_file, gz_merge_slurm_id, gz_unique_id
+    return gz_merged_slurm_out_file, gz_unique_id
 
 
 def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta_to_derep_name_stem,
@@ -722,7 +722,7 @@ def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta
         handle.write("#SBATCH --mem=1000\n\n")
         handle.write(f"{derep_cmd}\n")
         handle.write(f"echo {derep_unique_id}")
-    os.chmod(run_derep, 0o777)
+    os.chmod(str(run_derep), 0o777)
 
     with open(logfile, "a") as handle:
         handle.write(f"# running dereplication\n{str(derep_cmd)}\n")
@@ -742,7 +742,188 @@ def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta
             handle.write(f"# vsearch dereplication failed\n{e}\n")
         raise e
 
-    return derep_slurm_out_file, derep_slurm_id, derep_unique_id, dereplicated_file
+    return derep_slurm_out_file, derep_unique_id
+
+
+def concat_fasta(chain_path, search_fasta_folder, scripts_folder, concated_outfile, logfile):
+    # concatenate multiple fasta files
+    cat_str = f"cat "
+    for file in search_fasta_folder:
+        cat_str += f"{str(file)} "
+    # set job id
+    cat_unique_id = uuid.uuid4()
+    cat_job_name = f'concat'
+    run_cat = pathlib.Path(scripts_folder, "run_cat.sh")
+    concat_cmd = f"{cat_str} >> {concated_outfile}"
+    with open(run_cat, "w") as handle:
+        handle.write("#!/bin/sh\n")
+        handle.write("#SBATCH -J gzip\n")
+        handle.write("#SBATCH --mem=1000\n\n")
+        handle.write(f"{concat_cmd}\n")
+        handle.write(f"echo {cat_unique_id}")
+    os.chmod(str(run_cat), 0o777)
+
+    with open(logfile, "a") as handle:
+        handle.write(f"# concatenating multiple merged fasta files\n{concat_cmd}\n")
+
+    cmd_cat = f"sbatch -J {cat_job_name} {run_cat} --parsable --wait"
+    try:
+        cat_slurm_id = subprocess.check_output(cmd_cat, shell=True).decode(sys.stdout.encoding).strip()
+        cat_slurm_id = cat_slurm_id.split(" ")[-1]
+        cat_slurm_out_file = pathlib.Path(chain_path, f"slurm-{cat_slurm_id}.out")
+
+    except subprocess.CalledProcessError as e:
+        print("concatenating files encountered an error\ntrying next sample")
+        with open(logfile, "a") as handle:
+            handle.write(f"# concatenating fasta files failed\n{e}\n")
+        raise e
+
+    return cat_slurm_out_file, cat_unique_id
+
+
+def check_slurm_jobs(job_name, job_list_to_check, sleep_time_sec, logfile):
+    """
+
+    :param job_name:
+    :param job_list_to_check:
+    :param sleep_time_sec:
+    :param logfile:
+    :return:
+    """
+
+    while True:
+        if not job_list_to_check:
+            break
+        else:
+            for indx, [job_file, unique_id] in job_list_to_check:
+                if job_file.is_file():
+                    with open(job_file, 'rb') as slurm_out:
+                        sonar_p2_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
+                    if sonar_p2_check == str(unique_id):
+                        # remove the job entry from the list
+                        del job_list_to_check[indx]
+                        with open(logfile, "a") as handle:
+                            handle.write(f"# {job_name}: job {job_file} has finished\n")
+
+            if job_list_to_check:
+                time.sleep(sleep_time_sec)
+    return True
+
+
+def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_with_sonar1_work, target_folder,
+                        logfile):
+    """
+
+    :param chain_path:
+    :param scripts_folder:
+    :param dir_with_sonar1_output:
+    :param dir_with_sonar1_work:
+    :param target_folder:
+    :param logfile:
+    :return:
+    """
+    # set job id
+    sonar1_cp_unique_id = uuid.uuid4()
+    sonar_p1_cp = f'snr1cp'
+    run_snr1cp = pathlib.Path(scripts_folder, "run_sonar1_cp.sh")
+    # copy files to desired directory
+    cmd_copy_work = f"cp {dir_with_sonar1_work} {target_folder}"
+    cmd_copy_output = f"cp {dir_with_sonar1_output} {target_folder}"
+    with open(run_snr1cp, "w") as handle:
+        handle.write("#!/bin/sh\n")
+        handle.write("#SBATCH -J gzip\n")
+        handle.write("#SBATCH --mem=1000\n")
+        handle.write(f"#SBATCH -o {chain_folder}\n\n")
+        handle.write(f"{cmd_copy_work}\n")
+        handle.write(f"{cmd_copy_output}\n")
+        handle.write(f"echo {sonar1_cp_unique_id}")
+    os.chmod(str(run_snr1cp), 0o777)
+
+    with open(logfile, "a") as handle:
+        handle.write(f"# copyting Sonar P1 output to target directory\n{cmd_copy_work}"
+                     f"\n{cmd_copy_output}")
+
+    cmd_snr1_cp = f"sbatch -J {sonar_p1_cp} {run_snr1cp} --wait"
+    try:
+        sonar1_cp_slurm_id = subprocess.check_output(cmd_snr1_cp, shell=True) \
+            .decode(sys.stdout.encoding).strip()
+        sonar1_cp_slurm_id = sonar1_cp_slurm_id.split(" ")[-1]
+        sonar1_cp_outfile = pathlib.Path(chain_path, f"slurm-{sonar1_cp_slurm_id}.out")
+
+    except subprocess.CalledProcessError as e:
+        print(e)
+        print("There was an error copying the sonar P1 files to the sonar P2 directory")
+        with open(logfile, "a") as handle:
+            handle.write(f"Error copying Sonar P1 output to Sonar P2 folder\n{e}\n")
+        raise  e
+
+    return sonar1_cp_outfile, sonar1_cp_unique_id
+
+def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, mab, scripts_folder, mab_name_file,
+                  target_folder, parent_dir, logfile):
+    """
+
+    :param chain_folder:
+    :param sample_name:
+    :param run_sonar2_trunc:
+    :param known_mab_name:
+    :param mab:
+    :param scripts_folder:
+    :param mab_name_file:
+    :param target_folder:
+    :param parent_dir:
+    :param logfile:
+    :return:
+    """
+    # make Sonar P2 script
+    id_prefix = sample_name[3:6]
+    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+    # set job id
+    sonar2_unique_id = uuid.uuid4()
+    sonar2_job_name = f"{id_prefix}{unique_suffix}S2"
+    if run_sonar2_trunc:
+        sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run_trunc.sh"
+        sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
+        sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
+                     f"-g /opt/conda2/pkgs/sonar/germDB/IgHKLV_cysTruncated.fa -ap muscle -t 4"
+        with open(sonar_p2_run, 'w') as handle:
+            handle.write("#!/bin/sh\n")
+            handle.write("##SBATCH -w, --nodelist=bio-linux\n")
+            handle.write("#SBATCH --mem=4000\n")
+            handle.write(f"#SBATCH -o {chain_folder}\n\n")
+            handle.write(f"{sonar2_cmd}\n")
+            handle.write(f"echo {sonar2_unique_id}\n")
+    else:
+        sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run.sh"
+        sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
+        sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
+                     f"-ap muscle -t 4"
+        with open(sonar_p2_run, 'w') as handle:
+            handle.write("#!/bin/sh\n")
+            handle.write("##SBATCH -w, --nodelist=bio-linux\n")
+            handle.write("#SBATCH --mem=4000\n\n")
+            handle.write(f"{sonar2_cmd}\n")
+            handle.write(f"echo {sonar2_unique_id}\n")
+    os.chmod(str(sonar_p2_run), 0o777)
+
+    with open(logfile, "a") as handle:
+        handle.write(f"running sonar P2\n{sonar2_cmd}\n")
+
+    sonar_p2_call = f"sbatch -J {sonar2_job_name} {sonar_p2_run} --wait"
+    try:
+        # run sonar2
+        os.chdir(str(target_folder))
+        sonar2_cp_slurm_id = subprocess.check_output(sonar_p2_call, shell=True) \
+            .decode(sys.stdout.encoding).strip()
+        sonar2_cp_slurm_id = sonar2_cp_slurm_id.split(" ")[-1]
+        sonar2_outfile = pathlib.Path(parent_dir, f"slurm-{sonar2_cp_slurm_id}.out")
+        os.chdir(parent_dir)
+    except subprocess.CalledProcessError as e:
+        with open(logfile, "a") as handle:
+            handle.write(f"There was an error running sonar P2\n{e}\n")
+        raise
+
+    return sonar2_outfile, sonar2_unique_id
 
 
 def step_1_run_sample_processing(path, command_call_processing, logfile):
@@ -755,10 +936,10 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     """
     # Bites to Gb adjustment
     gb = (1024 * 1024) * 1024
-    threads = 4
     sleep_time_sec = 60 * 2
 
     # check that raw files are gzipped
+    check_gz_raw_jobs = []
     for item in command_call_processing:
         sample_name = item[0]
         print(f"\n{'-'*10}\n# Processing {sample_name}\n\n")
@@ -773,26 +954,17 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         if not search_raw_files:
             search_raw_files_fastq = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq"))
             if search_raw_files_fastq:
-                gz_slurm_out_file, gzip_slurm_id, gz_unique_id = raw_files_gz(chain_path, sample_name,
-                                                                              dir_with_raw_files, script_folder,
-                                                                              logfile)
-                while True:
-                    print("checking if gz of raw files is complete")
-                    if gz_slurm_out_file.is_file():
-                        with open(gz_slurm_out_file, 'rb') as slurm_out:
-                            gz_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                        if gz_check == str(gz_unique_id):
-                            print("gz completed")
-                            break
-                        else:
-                            print("still waiting for gz of raw files to complete")
-                            time.sleep(sleep_time_sec)
-                    else:
-                        print("waiting for gz of raw files to complete")
-                        time.sleep(sleep_time_sec)
+                gz_slurm_out_file, gz_unique_id = raw_files_gz(chain_path, sample_name, dir_with_raw_files,
+                                                               script_folder, logfile)
+                check_gz_raw_jobs.append([gz_slurm_out_file, gz_unique_id])
+
+    # check for completion of gzip submissions
+    check_slurm_jobs("gzip of raw files", check_gz_raw_jobs, sleep_time_sec, logfile)
 
     # run pear on raw files
     print("running PEAR")
+    check_pear_jobs = []
+    merged_folders = []
     for item in command_call_processing:
         sample_name = item[0]
         print(f"\n{'-' * 10}\n# Processing {sample_name}\n\n")
@@ -823,6 +995,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         if derep_search:
             for file in derep_search:
                 os.unlink(str(file))
+
         # check for zipped files
         search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R*.fastq.gz"))
         if search_zip_raw_files:
@@ -854,42 +1027,30 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                         sys.exit("exiting")
 
                     merged_file_name = pathlib.Path(merged_folder, sample_name)
+                    pear_slurm_out_file, pear_unique_id = \
+                        run_pear(path, sample_name, script_folder, file_r1, file_r2, merged_file_name, i, logfile)
 
-                    meged_outfile = pathlib.Path(f"{merged_file_name}.assembled.fastq")
-                    pear_slurm_out_file, pear_slurm_id, pear_unique_id = \
-                        run_pear(path, sample_name, script_folder,file_r1, file_r2, merged_file_name, i, logfile)
-                    while True:
-                        print("checking if merged output is ready")
-                        if pear_slurm_out_file.is_file():
-                            with open(pear_slurm_out_file, 'rb') as slurm_out:
-                                pear_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                            if pear_check == str(pear_unique_id):
-                                print("pear completed")
-                                break
-                            else:
-                                print("still waiting for pear to complete")
-                                time.sleep(sleep_time_sec * 20)
-                        else:
-                            print("waiting for pear to complete")
-                            time.sleep(sleep_time_sec * 20)
+                    # collect submission
+                    check_pear_jobs.append([pear_slurm_out_file, pear_unique_id])
+                    merged_folders.append(merged_folder)
 
-                    if not meged_outfile.is_file():
-                        print("merged output not detected\ntrying next sample")
-                        with open(logfile, "a") as handle:
-                            handle.write(f"# merged output not detected\n# trying next sample\n")
-                        continue
+    # check for completion of pear submissions
+    pear_sleep = sleep_time_sec * 10
+    check_slurm_jobs("pear merge", check_pear_jobs, pear_sleep, logfile)
 
-                    # remove unmerged files
-                    print("removing unmerged files")
-                    unassmebled_search = pathlib.Path(merged_folder).glob(f"{sample_name}*unassembled*.fastq")
-                    discarded_search = pathlib.Path(merged_folder).glob(f"{sample_name}*discarded.fastq")
-                    for file in unassmebled_search:
-                        os.unlink(str(file))
-                    for file in discarded_search:
-                        os.unlink(str(file))
+    # remove unmerged files
+    for merged_folder in merged_folders:
+        unassmebled_search = pathlib.Path(merged_folder).glob(f"{sample_name}*unassembled*.fastq")
+        discarded_search = pathlib.Path(merged_folder).glob(f"{sample_name}*discarded.fastq")
+        for file in unassmebled_search:
+            os.unlink(str(file))
+        for file in discarded_search:
+            os.unlink(str(file))
 
     # convert to fasta
     print("running fastq 2 fasta")
+    check_convert_jobs = []
+    fasta_file_list = []
     for j, item in enumerate(command_call_processing):
         sample_name = item[0]
         print(f"\n{'-' * 10}\n# Processing {sample_name}\n\n")
@@ -905,55 +1066,42 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
         # fix file permissions for output
         os.chmod(str(meged_outfile), 0o666)
-        fastq_fasta_slurm_out_file, fastq_fasta_slurm_id, convert_unique_id = \
+        fastq_fasta_slurm_out_file, convert_unique_id = \
             fastq2fasta(chain_path, sample_name, script_folder, fasta, meged_outfile, j, logfile)
 
-        while True:
-            print("checking if fastq to fasta output is ready")
-            if fastq_fasta_slurm_out_file.is_file():
-                with open(fastq_fasta_slurm_out_file, 'rb') as slurm_out:
-                    convert_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                if convert_check == str(convert_unique_id):
-                    print("fastq to fasta conversion completed")
-                    break
-                else:
-                    print("still waiting for fastq to fasta conversion to complete")
-                    time.sleep(sleep_time_sec)
-            else:
-                print("waiting for fastq to fasta conversion to complete")
-                time.sleep(sleep_time_sec)
+        # collect submission
+        check_convert_jobs.append([fastq_fasta_slurm_out_file, convert_unique_id])
+        fasta_file_list.append(fasta)
 
+    # check for completion of pear submissions
+    check_slurm_jobs("fastq2fasta", check_convert_jobs, sleep_time_sec, logfile)
+
+    # gzip the merged files
+    check_gz_merged_jobs = []
+    for j, item in enumerate(command_call_processing):
+        sample_name = item[0]
+        print(f"\n{'-' * 10}\n# Processing {sample_name}\n\n")
+        dir_with_raw_files = item[1]
+        chain_path = dir_with_raw_files.parent
+        script_folder = pathlib.Path(chain_path, "scripts")
+        merged_folder = pathlib.Path(chain_path, "2_merged_filtered")
+        fasta_folder = pathlib.Path(chain_path, "3_fasta")
+        meged_outfile = pathlib.Path(merged_folder, f"{sample_name}.assembled.fastq")
+        print("converting fastq to fasta")
+        fasta = f"{str(meged_outfile.stem)}.fasta"
+        fasta = pathlib.Path(fasta_folder, fasta)
         # compress pear if the merged file was successfully converted to a fasta file
         if fasta.is_file():
             # fix file permissions for output
             os.chmod(str(fasta), 0o666)
             print("compressing merged fastq file")
-            gz_merged_slurm_out_file, gz_merge_slurm_id, gz_unique_id = \
-                merged_files_gz(chain_path, script_folder, meged_outfile, j, logfile)
-            while True:
-                print("checking if gzip on merged file is ready")
-                if gz_merged_slurm_out_file.is_file():
-                    with open(gz_merged_slurm_out_file, 'rb') as slurm_out:
-                        gz_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                    if gz_check == str(gz_unique_id):
-                        print("gz on merged file completed")
-                        break
-                    else:
-                        print("waiting for gz on merged file to complete")
-                        time.sleep(sleep_time_sec)
-                else:
-                    print("waiting for gz on merged file to complete")
-                    time.sleep(sleep_time_sec)
-            zip_merged_file = pathlib.Path(f"{str(meged_outfile)}.gz")
-            if not zip_merged_file.is_file():
-                print("could not zip merged file\ntrying next sample")
-                with open(logfile, "a") as handle:
-                    handle.write(f"# could not zip merged file\n# trying next sample\n")
+            gz_merged_slurm_out_file, gz_unique_id = merged_files_gz(chain_path, script_folder, meged_outfile, j,
+                                                                     logfile)
+            # collect submission
+            check_gz_merged_jobs.append([gz_merged_slurm_out_file, gz_unique_id])
 
-        else:
-            print("could not find the fasta file\nconversion of fastq to fasta might have failed\n"
-                  "trying next sample")
-            continue
+    # check for completion of pear submissions
+    check_slurm_jobs("gzip on merged", check_gz_merged_jobs, sleep_time_sec, logfile)
 
     # collect all the files that will be dereplicated
     files_to_derep_dict = collections.defaultdict(list)
@@ -964,7 +1112,10 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         files_to_derep_dict[str(chain_path)].append(sample_name)
 
     # concat (if needed) and dereplicate fasta files
+    concat_files = []
+    check_derep_jobs = []
     for chain_folder, sample_name_list in files_to_derep_dict.items():
+        check_concat_jobs = []
         scripts_folder = pathlib.Path(chain_folder, "scripts")
         fasta_folder = pathlib.Path(chain_folder, "3_fasta")
         derep_folder = pathlib.Path(chain_folder, "4_dereplicated")
@@ -988,60 +1139,16 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             if concated_outfile.is_file():
                 # remove existing file so that you don't accidentally concatenate in duplicate
                 print(f"{concated_outfile}\nalready exists\nthis file will be overwritten")
-                os.unlink(concated_outfile)
+                os.unlink(str(concated_outfile))
 
             # concatenate multiple fasta files
-            cat_str = f"cat "
-            for file in search_fasta_folder:
-                cat_str += f"{str(file)} "
-            # set job id
-            cat_unique_id = uuid.uuid4()
-            cat_job_name = f'concat'
-            run_cat = pathlib.Path(scripts_folder, "run_cat.sh")
-            concat_cmd = f"{cat_str} >> {concated_outfile}"
-            with open(run_cat, "w") as handle:
-                handle.write("#!/bin/sh\n")
-                handle.write("#SBATCH -J gzip\n")
-                handle.write("#SBATCH --mem=1000\n\n")
-                handle.write(f"{concat_cmd}\n")
-                handle.write(f"echo {cat_unique_id}")
-            os.chmod(run_cat, 0o777)
+            cat_slurm_out_file, cat_unique_id = concat_fasta(chain_folder, search_fasta_folder, scripts_folder,
+                                                             concated_outfile, logfile)
+            check_concat_jobs.append([cat_slurm_out_file, cat_unique_id])
 
-            with open(logfile, "a") as handle:
-                handle.write(f"# concatenating multiple merged fasta files\n{concat_cmd}\n")
+            # check for completion of concat job
+            check_slurm_jobs("concat fasta", check_concat_jobs, sleep_time_sec, logfile)
 
-            cmd_cat = f"sbatch -J {cat_job_name} {run_cat} --parsable --wait"
-            try:
-                cat_slurm_id = subprocess.check_output(cmd_cat, shell=True).decode(sys.stdout.encoding).strip()
-                cat_slurm_id = cat_slurm_id.split(" ")[-1]
-                cat_slurm_out_file = pathlib.Path(path, f"slurm-{cat_slurm_id}.out")
-                while True:
-                    print("checking if concat file is ready")
-                    if cat_slurm_out_file.is_file():
-                        with open(cat_slurm_out_file, 'rb') as slurm_out:
-                            cat_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                        if cat_check == str(cat_unique_id):
-                            print("fastq to fasta conversion completed")
-                            break
-                        else:
-                            print("waiting for concat to complete")
-                            time.sleep(sleep_time_sec)
-                    else:
-                        print("waiting for concat to complete")
-                        time.sleep(sleep_time_sec)
-
-                if not concated_outfile.is_file():
-                    print("could not find concat file\ntrying next sample")
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# concatenating fasta files failed\n")
-                    continue
-
-            except subprocess.CalledProcessError as e:
-                print(e)
-                print("concatenating files encountered an error\ntrying next sample")
-                with open(logfile, "a") as handle:
-                    handle.write(f"# concatenating fasta files failed\n{e}\n")
-                continue
             file_to_dereplicate = concated_outfile
         # only one fasta file for this sample
         elif len(search_fasta_folder) == 1:
@@ -1056,53 +1163,36 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         with open(logfile, "a") as handle:
             handle.write(f"\n# dereplicating files\n")
 
-        derep_slurm_out_file, derep_slurm_id, derep_unique_id, dereplicated_file = \
-            dereplicate_fasta(chain_folder, scripts_folder, name_stem, derep_folder, fasta_to_derep_name_stem,
-                              file_to_dereplicate, logfile)
-        while True:
-            print("checking if dereplication file is ready")
-            if derep_slurm_out_file.is_file():
-                with open(derep_slurm_out_file, 'rb') as slurm_out:
-                    derep_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                if derep_check == str(derep_unique_id):
-                    print("fastq to fasta conversion completed")
-                    break
-                else:
-                    print("waiting for concat to complete")
-                    time.sleep(sleep_time_sec)
-            else:
-                print("waiting for concat to complete")
-                time.sleep(sleep_time_sec)
-        #
-        if not dereplicated_file.is_file():
-            print("could not find dereplicated file")
-            with open(logfile, "a") as handle:
-                handle.write(f"# vsearch dereplication failed\n")
-            continue
+        derep_slurm_out_file, derep_unique_id = dereplicate_fasta(chain_folder, scripts_folder, name_stem,
+                                                                  derep_folder, fasta_to_derep_name_stem,
+                                                                  file_to_dereplicate, logfile)
+        check_derep_jobs.append([derep_slurm_out_file, derep_unique_id])
+        concat_files.append(fasta_folder)
 
-        # fix file permissions for output
-        os.chmod(str(dereplicated_file), 0o666)
+    # check for derep completion
+    check_slurm_jobs("dereplication of fasta", check_derep_jobs, sleep_time_sec, logfile)
 
+    # remove the concatenated files
+    for fasta_folder in concat_files:
         # remove non-dereplicated file if you had to concatenate multiple files
         for file in pathlib.Path(fasta_folder).glob(f"*_concatenated.fasta"):
             print("removing concatenated fasta file")
             os.unlink(str(file))
 
-        with open(logfile, "a") as handle:
-            handle.write(f"# processing of sample completed\n")
+    with open(logfile, "a") as handle:
+        handle.write(f"# processing of sample completed\n")
 
 
-def step_2_run_sonar_p1(command_call_sonar_1, simultaneous_sonar_p1_jobs, logfile):
+def step_2_run_sonar_p1(command_call_sonar_1, logfile):
     """
     function to automate calling sonar1 on NGS Ab dereplicated fasta files
     :param command_call_sonar_1: list of samples to run sonar1 on
-    :param simultaneous_sonar_p1_jobs(int) number of simultaneous sonar P1 slurm submissions allowed
     :param logfile: (str) path and name of the logfile
     :return:
     """
     gb = (1024 * 1024) * 1024
     slurm_submission_jobs = []
-    sleep_time_sec = 60 * 10
+    sleep_time_sec = 60 * 10 * 6
     for item in command_call_sonar_1:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
@@ -1164,16 +1254,6 @@ def step_2_run_sonar_p1(command_call_sonar_1, simultaneous_sonar_p1_jobs, logfil
                         f"# you expected to need up to {fasta_size * 10}Gb for sonar P1")
                 sys.exit("exiting")
 
-            # search for finished sonar P1 jobs and remove from list
-            for indx, [job_file, unique_id] in slurm_submission_jobs:
-                print("checking if any sonar P1 jobs have completed")
-                if job_file.is_file():
-                    with open(job_file, 'rb') as slurm_out:
-                        sonar_p1_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                    if sonar_p1_check == str(unique_id):
-                        print("a sonar P1 job has completed")
-                        del slurm_submission_jobs[indx]
-
             id_prefix = sample_name[3:6]
             unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
             # set job id
@@ -1196,7 +1276,6 @@ def step_2_run_sonar_p1(command_call_sonar_1, simultaneous_sonar_p1_jobs, logfil
 
             sonar_version_setting = sonar_settings[sonar_version]
             run_sonar_p1 = pathlib.Path(scripts_folder, f"run_sonar_P1_{sonar_version}.sh")
-            # todo specify sbatch outpath
             with open(run_sonar_p1, "w") as handle:
                 handle.write("#!/bin/sh\n")
                 handle.write("#SBATCH -w, --nodelist=bio-linux\n")
@@ -1208,37 +1287,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, simultaneous_sonar_p1_jobs, logfil
 
             with open(logfile, "a") as handle:
                 handle.write(f"# running Sonar P1 command from file:\n{str(sonar_version_setting)}\n")
-
-            # run only 3 sonar p1 jobs at a time
-            if len(slurm_submission_jobs) > simultaneous_sonar_p1_jobs - 1:
-                with open(logfile, "a") as handle:
-                    handle.write(f"# Max number of sonar P1 jobs are running\n"
-                                 f"# waiting for completion of sonar p1 jobs before starting the next one")
-                check = True
-                while check:
-                    for i, [job_file, job_id] in slurm_submission_jobs:
-                        print("checking if any sonar p1 jobs have finished")
-                        if job_file.is_file():
-                            with open(job_file, 'rb') as slurm_out:
-                                sonar1_cp_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                            if sonar1_cp_check == str(job_id):
-                                print("sonar p1 cp completed")
-                                with open(logfile, "a") as handle:
-                                    handle.write(f"# sonar P1 job finished\n# removing it from list of running jobs\n")
-                                # remove the job entry from the list
-                                del slurm_submission_jobs[i]
-                                # break out of while loop after checking the test of the jobs
-                                check = False
-                            else:
-                                print("still waiting for sonar p1 to complete")
-                                time.sleep(sleep_time_sec)
-                        else:
-                            print("waiting for sonar p1 cp to complete")
-                            time.sleep(sleep_time_sec)
-                with open(logfile, "a") as handle:
-                    handle.write(f"# submitting next sonar P1 job\n")
-
-            sonar1_run_cmd = f"sbatch -J {sonar1_job_name} {run_sonar_p1} --parsable --wait"
+            sonar1_run_cmd = f"sbatch -J {sonar1_job_name} {run_sonar_p1} --parsable"
             try:
                 # change into sonar P1 targer directory
                 os.chdir(dir_with_sonar1_files)
@@ -1246,7 +1295,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, simultaneous_sonar_p1_jobs, logfil
                     .decode(sys.stdout.encoding).strip()
                 sonar_p1_slurm_id = sonar_p1_slurm_id.split(" ")[-1]
                 sonar_p1_slurm_out_file = pathlib.Path(dir_with_sonar1_files, f"slurm-{sonar_p1_slurm_id}.out")
-                slurm_submission_jobs.append([sonar_p1_slurm_out_file, sonar_p1_slurm_id])
+                slurm_submission_jobs.append([sonar_p1_slurm_out_file, sonar_p1_unique_id])
 
             except subprocess.CalledProcessError as e:
                 print(e)
@@ -1256,21 +1305,24 @@ def step_2_run_sonar_p1(command_call_sonar_1, simultaneous_sonar_p1_jobs, logfil
                 os.chdir(project_folder)
                 continue
 
+    # search for finished sonar P1 jobs and remove from list, Holds pipeline until Sonar P1 jobs are done
+    check_slurm_jobs("sonar P1", slurm_submission_jobs, sleep_time_sec, logfile)
 
-def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, simultaneous_sonar_p2_jobs, logfile):
+
+def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, logfile):
     """
     function to automate calling sonar1 on NGS Ab dereplicated fasta files
     :param command_call_sonar_2: list of samples to run sonar2 on
     :param fasta_sequences: (dict) dict of all the mAb fasta sequences (full and crd3)
     :param run_sonar2_trunc: (Bool) True if flag is set, default is False, will run sonar_trunc call if True
-    :param simultaneous_sonar_p2_jobs(int) number of simultaneous sonar P1 slurm submissions allowed
     :param fasta_sequences: (dict) dict containing key = seq name, value = sequence for all known mAb sequences
     :param logfile: (str) path and name of the logfile
     :return:
     """
     gb = (1024 * 1024) * 1024
-    sleep_time_sec = 60 * 2
-    slurm_submission_jobs = []
+    sleep_time_sec = 60 * 10 * 2
+
+    slurm_sonar2_submission_jobs = []
     for item in command_call_sonar_2:
         sample_name = item[0]
         dir_with_sonar1_files = item[1]
@@ -1283,8 +1335,13 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         target_folder_crdh3 = pathlib.Path(f"5_{known_mab_name}", "crd3")
         fullab_name = known_mab_name + f"_{chain}_fullab"
         cdr3_name = known_mab_name + f"_{chain}_cdr3"
-        mab_sequence_fullab = fasta_sequences[fullab_name]
-        mab_sequence_cdr3 = fasta_sequences[cdr3_name]
+        try:
+            mab_sequence_fullab = fasta_sequences[fullab_name]
+            mab_sequence_cdr3 = fasta_sequences[cdr3_name]
+        except KeyError:
+            with open(logfile, "a") as handle:
+                handle.write(f"# mab names in settings file don't match the names in the fasta file\n")
+            raise
 
         # check for mab_sequences folder
         fasta_sequences = pathlib.Path(parent_dir, "mab_sequences")
@@ -1305,26 +1362,19 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                 print(f"No Sonar P1 files detected in: {dir_with_sonar1_files}")
                 sys.exit()
 
+        # run on full antibody and on cdr3 region
         to_run = [(target_folder_full_ab, fullab_name, mab_sequence_fullab),
                   (target_folder_crdh3, cdr3_name, mab_sequence_cdr3)]
         mab = ["fullab", "cdr3"]
 
-        # search for finished sonar P2 jobs and remove from list
-        for indx, [job_file, unique_id] in slurm_submission_jobs:
-            print("checking if any sonar P2 jobs have completed")
-            if job_file.is_file():
-                with open(job_file, 'rb') as slurm_out:
-                    sonar_p2_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                if sonar_p2_check == str(unique_id):
-                    print("a sonar P2 job has completed\nremoving it from list of running jobs")
-                    del slurm_submission_jobs[indx]
-
         for i, (target_folder, mab_name, mab_seq) in enumerate(to_run):
+            slurm_cp_submission_jobs = []
             # make fasta file for ab run
             mab_name_file = f"{item}.fasta"
             mab_name_file = pathlib.Path(target_folder, mab_name_file)
             with open(mab_name_file, 'w') as handle:
                 handle.write(f">{mab_name}\n{mab_sequence_fullab}\n")
+            os.chmod(str(mab_name_file), 0o666)
             # set target folders
             dir_with_sonar2_work = pathlib.Path(target_folder, "work")
             dir_with_sonar2_output = pathlib.Path(target_folder, "output")
@@ -1350,7 +1400,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                 if copy_sonar_p1:
                     # check for free disk space
                     free_space, percent_free = disk_space_checker(parent_dir)
-                    sonar_p1_size = round(folder_size_checker(dir_with_sonar1_output) / gb, 3)
+                    sonar_p1_size = round(folder_size_checker(str(dir_with_sonar1_output)) / gb, 3)
                     if free_space < sonar_p1_size * 3:
                         print(f"not enough free space to run sonar P2\nFree space is {free_space}Gb"
                               f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
@@ -1359,53 +1409,16 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                                          f"# Free space is {free_space}Gb {percent_free}%\n"
                                          f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
                         sys.exit("exiting")
-                    # set job id
-                    sonar1_cp_unique_id = uuid.uuid4()
-                    sonar_p1_cp = f'snr1cp'
-                    run_snr1cp = pathlib.Path(scripts_folder, "run_sonar1_cp.sh")
-                    # copy files to desired directory
-                    cmd_copy_work = f"cp {dir_with_sonar1_work} {target_folder}"
-                    cmd_copy_output = f"cp {dir_with_sonar1_output} {target_folder}"
-                    with open(run_snr1cp, "w") as handle:
-                        handle.write("#!/bin/sh\n")
-                        handle.write("#SBATCH -J gzip\n")
-                        handle.write("#SBATCH --mem=1000\n")
-                        handle.write(f"#SBATCH -o {chain_folder}\n\n")
-                        handle.write(f"{cmd_copy_work}\n")
-                        handle.write(f"{cmd_copy_output}\n")
-                        handle.write(f"echo {sonar1_cp_unique_id}")
-                    os.chmod(run_snr1cp, 0o777)
 
-                    with open(logfile, "a") as handle:
-                        handle.write(f"# copyting Sonar P1 output to target directory\n{cmd_copy_work}"
-                                     f"\n{cmd_copy_output}")
+                    sonar1_cp_outfile, sonar1_cp_unique_id = sonar_p2_copy_files(chain_folder, scripts_folder,
+                                                                                 dir_with_sonar1_output,
+                                                                                 dir_with_sonar1_work,
+                                                                                 target_folder, logfile)
+                    # collect cp job details
+                    slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
 
-                    cmd_snr1_cp = f"sbatch -J {sonar_p1_cp} {run_snr1cp} --wait"
-                    try:
-                        sonar1_cp_slurm_id = subprocess.check_output(cmd_snr1_cp, shell=True)\
-                            .decode(sys.stdout.encoding).strip()
-                        sonar1_cp_slurm_id = sonar1_cp_slurm_id.split(" ")[-1]
-                        sonar1_cp_outfile = pathlib.Path(parent_dir, f"slurm-{sonar1_cp_slurm_id}.out")
-                        while True:
-                            print("checking if dereplication file is ready")
-                            if sonar1_cp_outfile.is_file():
-                                with open(sonar1_cp_outfile, 'rb') as slurm_out:
-                                    sonar1_cp_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                                if sonar1_cp_check == str(sonar1_cp_unique_id):
-                                    print("sonar p1 cp completed")
-                                    break
-                                else:
-                                    print("still waiting for sonar p1 to complete")
-                                    time.sleep(sleep_time_sec)
-                            else:
-                                print("waiting for sonar p1 cp to complete")
-                                time.sleep(sleep_time_sec)
-                    except subprocess.CalledProcessError as e:
-                        print(e)
-                        print("There was an error copying the sonar P1 files to the sonar P2 directory")
-                        with open(logfile, "a") as handle:
-                            handle.write(f"Error copying Sonar P1 output to Sonar P2 folder\n{e}\n")
-                        continue
+                    # check slurm sonar p1 copy jobs
+                    check_slurm_jobs("copy sonar P1 files", slurm_cp_submission_jobs, sleep_time_sec, logfile)
 
                     # check the files copied correctly
                     sonar_p1_alread_cp_work = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
@@ -1414,101 +1427,14 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                         print("Copied files are different from sonar P1 original files\nCopy must have failed")
                         sys.exit("exiting")
 
-        # run only 3 sonar p2 jobs at a time
-        if len(slurm_submission_jobs) > simultaneous_sonar_p2_jobs - 1:
-            with open(logfile, "a") as handle:
-                handle.write(f"# Max number of sonar P1 jobs are running\n"
-                             f"# waiting for completion of sonar p1 jobs before starting the next one")
-            check = True
-            while check:
-                for i, [job_file, job_id] in slurm_submission_jobs:
-                    print("checking if any sonar p1 jobs have finished")
-                    if job_file.is_file():
-                        with open(job_file, 'rb') as slurm_out:
-                            sonar1_cp_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                        if sonar1_cp_check == str(job_id):
-                            print("sonar p1 cp completed")
-                            with open(logfile, "a") as handle:
-                                handle.write(
-                                    f"# sonar P1 job finished\n# removing it from list of running jobs\n")
-                            # remove the job entry from the list
-                            del slurm_submission_jobs[i]
-                            # break out of while loop after checking the test of the jobs
-                            check = False
-                        else:
-                            print("still waiting for sonar p1 to complete")
-                            time.sleep(sleep_time_sec)
-                    else:
-                        print("waiting for sonar p1 cp to complete")
-                        time.sleep(sleep_time_sec)
-            with open(logfile, "a") as handle:
-                handle.write(f"# submitting next sonar P1 job\n")
+            sonar2_outfile, sonar2_unique_id = sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc,
+                                                             known_mab_name, mab[i], scripts_folder, mab_name_file,
+                                                             target_folder, parent_dir, logfile)
 
-            # make Sonar P2 script
-            id_prefix = sample_name[3:6]
-            unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
-            # set job id
-            sonar2_unique_id = uuid.uuid4()
-            sonar2_job_name = f"{id_prefix}{unique_suffix}S2"
-            if run_sonar2_trunc:
-                sonar_p2_run = f"{known_mab_name}_{mab[i]}_sonar_p2_run_trunc.sh"
-                sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
-                sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
-                    f"-g /opt/conda2/pkgs/sonar/germDB/IgHKLV_cysTruncated.fa -ap muscle -t 4"
-                with open(sonar_p2_run, 'w') as handle:
-                    handle.write("#!/bin/sh\n")
-                    handle.write("##SBATCH -w, --nodelist=bio-linux\n")
-                    handle.write("#SBATCH --mem=4000\n")
-                    handle.write(f"#SBATCH -o {chain_folder}\n\n")
-                    handle.write(f"{sonar2_cmd}\n")
-                    handle.write(f"echo {sonar2_unique_id}\n")
-            else:
-                sonar_p2_run = f"{known_mab_name}_{mab[i]}_sonar_p2_run.sh"
-                sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
-                sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
-                    f"-ap muscle -t 4"
-                with open(sonar_p2_run, 'w') as handle:
-                    handle.write("#!/bin/sh\n")
-                    handle.write("##SBATCH -w, --nodelist=bio-linux\n")
-                    handle.write("#SBATCH --mem=4000\n\n")
-                    handle.write(f"{sonar2_cmd}\n")
-                    handle.write(f"echo {sonar2_unique_id}\n")
-            os.chmod(str(sonar_p2_run), 0o777)
+            slurm_sonar2_submission_jobs.append([sonar2_outfile, sonar2_unique_id])
 
-            with open(logfile, "a") as handle:
-                handle.write(f"running sonar P2\n{sonar2_cmd}\n")
-
-            sonar_p2_call = f"sbatch -J {sonar2_job_name} {sonar_p2_run} --wait"
-            try:
-                # run sonar2
-                os.chdir(target_folder)
-                sonar2_cp_slurm_id = subprocess.check_output(sonar_p2_call, shell=True)\
-                    .decode(sys.stdout.encoding).strip()
-                sonar2_cp_slurm_id = sonar2_cp_slurm_id.split(" ")[-1]
-                sonar2_outfile = pathlib.Path(parent_dir, f"slurm-{sonar2_cp_slurm_id}.out")
-                slurm_submission_jobs.append([sonar2_outfile, sonar2_unique_id])
-                while True:
-                    print("checking if dereplication file is ready")
-                    if sonar2_outfile.is_file():
-                        with open(sonar2_outfile, 'rb') as slurm_out:
-                            sonar2_cp_check = list(slurm_out)[-1].decode(sys.stdout.encoding).strip()
-                        if sonar2_cp_check == str(sonar2_unique_id):
-                            print("sonar p2 cp completed")
-                            break
-                        else:
-                            print("still waiting for sonar p1 to complete")
-                            time.sleep(sleep_time_sec)
-                    else:
-                        print("waiting for sonar p1 cp to complete")
-                        time.sleep(sleep_time_sec)
-
-                os.chdir(parent_dir)
-            except subprocess.CalledProcessError as e:
-                print(e)
-                print("There was an error running sonar P2\nTrying next sample")
-                with open(logfile, "a") as handle:
-                    handle.write(f"There was an error running sonar P2\n{e}\n")
-                continue
+    # search for finished sonar P2 jobs and remove from list, Holds pipeline until Sonar P2 jobs are done
+    check_slurm_jobs("sonar P2", slurm_sonar2_submission_jobs, sleep_time_sec, logfile)
 
 
 def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
@@ -1519,8 +1445,7 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     :param fasta_file: (str) the path and name of the fasta file with your mAb sequences
     :param run_sonar2_trunc: (Bool) set flag to true to run sonar_trunc
     """
-    simultaneous_sonar_p1_jobs = 3
-    simultaneous_sonar_p2_jobs = 3
+
     path = pathlib.Path(path).absolute()
     if not path.is_dir():
         print("path to project folder is not a directory\n")
@@ -1586,21 +1511,20 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
             else:
                 removed_sonor1_duplicates_check.append(sonar1_dir)
                 dedup_sonar1_call.append([sample_name, sonar1_dir, chain])
-        step_2_run_sonar_p1(dedup_sonar1_call, log_file, simultaneous_sonar_p1_jobs)
+        step_2_run_sonar_p1(dedup_sonar1_call, log_file)
     else:
         print("no sonar P1 jobs found")
 
-    # # only run sonar 2 if one or more files were specified
-    # if command_call_sonar_2:
-    #     if fasta_file is not None:
-    #         fasta_sequences = fasta_to_dct(fasta_file)
-    #         step_3_run_sonar_2(path, command_call_sonar_2, fasta_sequences, run_sonar2_trunc,
-    #                            simultaneous_sonar_p2_jobs, log_file)
-    #     else:
-    #         print("no fasta file specified for Sonar P2 to run\n")
-    #         sys.exit("exiting")
-    # else:
-    #     print("no sonar P2 jobs found)
+    # only run sonar 2 if one or more files were specified
+    if command_call_sonar_2:
+        if fasta_file:
+            fasta_sequences = fasta_to_dct(fasta_file)
+            step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, log_file)
+        else:
+            print("no fasta file specified for Sonar P2 to run\n")
+            sys.exit("exiting")
+    else:
+        print("no sonar P2 jobs found")
 
     print("Done")
 
