@@ -58,7 +58,7 @@ include an entry for each mAb, as shown in the settings template
         * also accepts .gz compressed files or .fastq files
     * prepare your settings.csv file, indicating which steps to run on which samples
         * if running additional samples, set previous samples to '0' in the three run_step columns
-* create a folder called `mab_sequences` which contains a fasta file with all the mAb sequencse you will need for sonar P2
+* create a fasta file with your with all the mAb sequencse you will need for sonar P2
     * the names of the sequences must contain fields PID, Primer_name, chain, and either cdr3 or fullab
     
     eg:
@@ -92,7 +92,7 @@ include an entry for each mAb, as shown in the settings template
     This will start the screen session
     
     Now run:     
-     `ig_pipeline.py -p <project_path> -s <settings_file>`
+     `ig_pipeline.py -p <project_path> -s <settings_file> -f <fasta_file>`
     
     This will start the pipeline.
     

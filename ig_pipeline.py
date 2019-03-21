@@ -145,7 +145,7 @@ def fasta_to_dct(file_name):
     dct = collections.defaultdict(str)
     my_gen = py3_fasta_iter(file_name)
     for k, v in my_gen:
-        v = v.replace("-", "")
+        v = v.replace("~", "").replace("-", "").upper()
         new_key = k.replace(" ", "_")
         if new_key in dct.keys():
             print("Duplicate sequence ids found. Exiting")
@@ -296,6 +296,8 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name, logfil
     """
     known_mab_name = "5_" + known_mab_name
 
+    pathlib.Path(path, lineage, "mab_sequences").mkdir(mode=0o777, parents=True, exist_ok=True)
+
     pathlib.Path(path, lineage, time_point, chain, "scripts").mkdir(mode=0o777, parents=True, exist_ok=True)
 
     pathlib.Path(path, lineage, time_point, chain, "1_raw_data").mkdir(mode=0o777, parents=True, exist_ok=True)
@@ -324,13 +326,6 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name, logfil
                          "# making the folder for you\n# copy raw data into this folder\n# exiting")
         new_data.mkdir(mode=0o777, parents=True, exist_ok=True)
         sys.exit("exiting")
-
-    mab_folder = pathlib.Path(path, lineage, "mab_sequences")
-    if not mab_folder.is_dir():
-        with open(logfile, "a") as handle:
-            handle.write(f"# mab_sequences' folder not found in the project folder\n#ie: {mab_folder}\n"
-                         "# making the folder for you\n# copy your mAb fasta file into this folder\n# exiting")
-        mab_folder.mkdir(mode=0o777, parents=True, exist_ok=True)
 
 
 def move_raw_data(path, settings_dataframe, logfile):
@@ -1428,20 +1423,17 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             with open(logfile, "a") as handle:
                 handle.write(f"# mab names in settings file don't match the names in the fasta file\n")
             raise
+        fullab_name_file = pathlib.Path(parent_dir, "mab_sequences", f"{fullab_name}.fasta")
+        cdr3_name_file = pathlib.Path(parent_dir, "mab_sequences", f"{cdr3_name}.fasta")
 
-        # check for mab_sequences folder
-        fasta_sequences = pathlib.Path(parent_dir, "mab_sequences")
-        if not fasta_sequences.is_dir():
-            print(f"'mab_sequences' folder not found\n"
-                  f"You need to create a folder 'mab_sequences' in the project folder, ie:\n{fasta_sequences}"
-                  f"\nand copy your fasta file in there")
-            print("making the folder for you")
-            with open(logfile, "a") as handle:
-                handle.write(f"# mab_sequences' folder not found\n"
-                             f"# You need to create a folder 'mab_sequences' in the project folder, ie:\n"
-                             f"{fasta_sequences}\n# making the folder for you")
-            fasta_sequences.mkdir(mode=0o777, parents=True, exist_ok=True)
-            sys.exit("exiting")
+        # make fasta files
+        with open(fullab_name_file, 'w') as handle:
+            handle.write(f">{fullab_name}\n{mab_sequence_fullab}\n")
+        os.chmod(str(fullab_name_file), 0o666)
+
+        with open(cdr3_name_file, 'w') as handle:
+            handle.write(f">{cdr3_name}\n{mab_sequence_cdr3}\n")
+        os.chmod(str(cdr3_name_file), 0o666)
 
         # check for Sonar P1 files
         dir_with_sonar1_work = pathlib.Path(dir_with_sonar1_files, "work")
@@ -1455,81 +1447,73 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                     sys.exit()
 
         # run on full antibody and on cdr3 region
-        to_run = [(target_folder_full_ab, fullab_name, mab_sequence_fullab),
-                  (target_folder_crdh3, cdr3_name, mab_sequence_cdr3)]
+        to_run = [(target_folder_full_ab, fullab_name, fullab_name_file),
+                  (target_folder_crdh3, cdr3_name, cdr3_name_file)]
         mab = ["fullab", "cdr3"]
 
-        for i, (target_folder, mab_name, mab_seq) in enumerate(to_run):
+        for i, (target_folder, mab_name, mab_seq_file) in enumerate(to_run):
             slurm_cp_submission_jobs = []
-            # make fasta file for ab run
-            mab_name_file = f"{item}.fasta"
-            mab_name_file = pathlib.Path(target_folder, mab_name_file)
-            with open(mab_name_file, 'w') as handle:
-                handle.write(f">{mab_name}\n{mab_sequence_fullab}\n")
-            os.chmod(str(mab_name_file), 0o666)
+
             # set target folders
             dir_with_sonar2_work = pathlib.Path(target_folder, "work")
             dir_with_sonar2_output = pathlib.Path(target_folder, "output")
             # check that target dirs have unmodified sonar P1 output
-            sonar_p1_alread_cp_work = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
-            sonar_p1_alread_cp_output = is_same(dir_with_sonar1_output, dir_with_sonar2_output)
-            copy_sonar_p1 = True
-            for sonar2_dir in [dir_with_sonar2_work, dir_with_sonar2_output]:
-                sonar_p2_search = sonar2_dir.glob(".*")
-                # if sonar P2 folders not empty
-                if sonar_p2_search:
-                    # if they are identical to sonar P1 folders don't allow copy
-                    if sonar_p1_alread_cp_work and sonar_p1_alread_cp_output:
-                        print("unmodified sonar P1 output found in sonar P2 target folder\nNot re-copying the files")
-                        with open(logfile, "a") as handle:
-                            handle.write(f"# unmodified sonar P1 output found in sonar P2 target folder\n"
-                                         f"# Not re-copying the files\n")
-                        copy_sonar_p1 = False
-                    # if not identical, remove files and allow copy
-                    else:
-                        print(f"Modified sonar P1 output detected in sonar P2 target folder {item}\ndeleting files")
-                        with open(logfile, "a") as handle:
-                            handle.write(f"# Modified sonar P1 output detected in sonar P2 target folder {item}\n"
-                                         f"# deleting files\n")
-                        for file in sonar_p2_search:
-                            os.unlink(str(file))
+            if not dir_with_sonar2_output.is_dir() or dir_with_sonar2_work.is_dir():
+                copy_sonar_p1 = True
+            else:
+                sonar_p1_alread_cp_work = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
+                sonar_p1_alread_cp_output = is_same(dir_with_sonar1_output, dir_with_sonar2_output)
 
-                # copy data if sonar P1 output not already (unmodified) in target dir
-                if copy_sonar_p1:
-                    # check for free disk space
-                    free_space, percent_free = disk_space_checker(parent_dir)
-                    sonar_p1_size = round(folder_size_checker(str(dir_with_sonar1_output)) / gb, 3)
-                    if free_space < sonar_p1_size * 3:
-                        print(f"not enough free space to run sonar P2\nFree space is {free_space}Gb"
-                              f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
-                        with open(logfile, "a") as handle:
-                            handle.write(f"# Not enough free space to sonar P2\n"
-                                         f"# Free space is {free_space}Gb {percent_free}%\n"
-                                         f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
-                        sys.exit("exiting")
+                if sonar_p1_alread_cp_work and sonar_p1_alread_cp_output:
+                    print("unmodified sonar P1 output found in sonar P2 target folder\nNot re-copying the files")
+                    with open(logfile, "a") as handle:
+                        handle.write(f"# unmodified sonar P1 output found in sonar P2 target folder\n"
+                                     f"# Not re-copying the files\n")
+                    copy_sonar_p1 = False
+                else:
+                    copy_sonar_p1 = True
 
-                    sonar1_cp_outfile, sonar1_cp_unique_id = sonar_p2_copy_files(chain_folder, scripts_folder,
-                                                                                 dir_with_sonar1_output,
-                                                                                 dir_with_sonar1_work,
-                                                                                 target_folder, logfile)
-                    # collect cp job details
-                    slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
+            if copy_sonar_p1:
+                for sonar2_dir in [dir_with_sonar2_work, dir_with_sonar2_output]:
+                    sonar_p2_search = sonar2_dir.glob(".*")
+                    # todo delete all files
 
-                    # check slurm sonar p1 copy jobs
-                    check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec, logfile)
+            # copy data if sonar P1 output not already (unmodified) in target dir
+            if copy_sonar_p1:
+                # check for free disk space
+                free_space, percent_free = disk_space_checker(parent_dir)
+                sonar_p1_size = round(folder_size_checker(str(dir_with_sonar1_output)) / gb, 3)
+                if free_space < sonar_p1_size * 3:
+                    print(f"not enough free space to run sonar P2\nFree space is {free_space}Gb"
+                          f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
+                    with open(logfile, "a") as handle:
+                        handle.write(f"# Not enough free space to sonar P2\n"
+                                     f"# Free space is {free_space}Gb {percent_free}%\n"
+                                     f"# you expected to need up to {sonar_p1_size * 3}Gb for sonar P2")
+                    sys.exit("exiting")
 
-                    # check the files copied correctly
-                    sonar_p1_alread_cp_work = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
-                    sonar_p1_alread_cp_output = is_same(dir_with_sonar1_output, dir_with_sonar2_output)
-                    if not sonar_p1_alread_cp_output and sonar_p1_alread_cp_work:
-                        print("Copied files are different from sonar P1 original files\nCopy must have failed")
-                        with open(logfile, "a") as handle:
-                            handle.write(f"# Copied files are different from sonar P1 original files\n"
-                                         f"# Copy must have failed")
-                        sys.exit("exiting")
+                sonar1_cp_outfile, sonar1_cp_unique_id = sonar_p2_copy_files(chain_folder, scripts_folder,
+                                                                             dir_with_sonar1_output,
+                                                                             dir_with_sonar1_work,
+                                                                             target_folder, logfile)
+                # collect cp job details
+                slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
+
+                # check slurm sonar p1 copy jobs
+                check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec, logfile)
+
+                # check the files copied correctly
+                sonar_p1_alread_cp_work = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
+                sonar_p1_alread_cp_output = is_same(dir_with_sonar1_output, dir_with_sonar2_output)
+                if not sonar_p1_alread_cp_output and sonar_p1_alread_cp_work:
+                    print("Copied files are different from sonar P1 original files\nCopy must have failed")
+                    with open(logfile, "a") as handle:
+                        handle.write(f"# Copied files are different from sonar P1 original files\n"
+                                     f"# Copy must have failed")
+                    sys.exit("exiting")
 
             sonar2_outfile, sonar2_unique_id = sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc,
-                                                             known_mab_name, mab[i], scripts_folder, mab_name_file,
+                                                             known_mab_name, mab[i], scripts_folder, mab_seq_file,
                                                              target_folder, parent_dir, logfile)
 
             slurm_sonar2_submission_jobs.append([sonar2_outfile, sonar2_unique_id])
@@ -1632,7 +1616,6 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
             handle.write(f"# no sonar P1 jobs found\n")
 
     # only run sonar 2 if one or more files were specified
-    print("s2", command_call_sonar_2)
     if command_call_sonar_2:
         print("sonar P2 jobs found")
         with open(log_file, "a") as handle:
