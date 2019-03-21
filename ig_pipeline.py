@@ -320,10 +320,17 @@ def step_0_make_folders(path, lineage, time_point, chain, known_mab_name, logfil
     new_data = pathlib.Path(path, "0_new_data")
     if not new_data.is_dir():
         with open(logfile, "a") as handle:
-            handle.write("# 0_new_data' folder not found in the project folder\n#ie: {new_data}\n"
-                         "# making the folder for you")
+            handle.write(f"# 0_new_data' folder not found in the project folder\n#ie: {new_data}\n"
+                         "# making the folder for you\n# copy raw data into this folder\n# exiting")
         new_data.mkdir(mode=0o777, parents=True, exist_ok=True)
         sys.exit("exiting")
+
+    mab_folder = pathlib.Path(path, lineage, "mab_sequences")
+    if not mab_folder.is_dir():
+        with open(logfile, "a") as handle:
+            handle.write(f"# mab_sequences' folder not found in the project folder\n#ie: {mab_folder}\n"
+                         "# making the folder for you\n# copy your mAb fasta file into this folder\n# exiting")
+        mab_folder.mkdir(mode=0o777, parents=True, exist_ok=True)
 
 
 def move_raw_data(path, settings_dataframe, logfile):
@@ -418,7 +425,7 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
         dir_with_raw_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "1_raw_data")
         dir_with_sonar1_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "4_dereplicated")
         dir_with_sonar2_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "4_dereplicated",
-                                             f"5_{known_mab_name}", "output")
+                                             "output", "logs")
         if 1 in run_steps:
             for i, step in enumerate(run_steps):
                 if step == 1:
@@ -430,14 +437,19 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
 
                     elif i == 1:
                         command_call_sonar_1.append([sample_name, dir_with_sonar1_files, chain])
-                        search_sonar1_path = list(dir_with_sonar1_files.glob("*.fasta*"))
+                        search_sonar1_path = list(dir_with_sonar1_files.glob("*_unique.fasta"))
                         if search_sonar1_path:
                             n += 1
                     elif i == 2:
                         command_call_sonar_2.append([sample_name, dir_with_sonar1_files, chain, known_mab_name])
-                        search_sonar2_path = list(dir_with_sonar2_files.glob("*.fasta"))
+                        search_sonar2_path = list(dir_with_sonar2_files.glob("command_history.log"))
+                        print(search_sonar2_path)
                         if search_sonar2_path:
-                            n += 1
+                            with open(search_sonar2_path[0], 'r') as slurm_out:
+                                sonar_p1_check = list(slurm_out)[-1].strip().split(" ")
+                                sonar_p1_check = " ".join(sonar_p1_check[-3:])
+                                if sonar_p1_check == "Program finished successfully":
+                                    n += 1
                     else:
                         with open(logfile, "a") as handle:
                             handle.write("# this should not happen\nnumber of run steps larger than expected\n")
@@ -487,7 +499,6 @@ def check_slurm_jobs(job_name, job_list_to_check, sleep_time_sec, logfile):
                 if job_file.is_file():
                     with open(job_file, 'r') as slurm_out:
                         slurm_check = list(slurm_out)[-1].strip()
-
                     if slurm_check == str(unique_id):
                         # remove the job entry from the list
                         del job_list_to_check[indx]
@@ -694,6 +705,52 @@ def merged_files_gz(chain_path, scripts_folder, merged_outfile, itern, logfile):
     return gz_merged_slurm_out_file, gz_unique_id
 
 
+def concat_fasta(chain_path, search_fasta_folder, scripts_folder, concated_outfile, logfile):
+    """
+    Function to submit slurm job for concatenating fasta files
+    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param search_fasta_folder: (str) the path to the folder with the fasta files
+    :param scripts_folder: (str) path to where the slurm submission scripts are written to
+    :param concated_outfile: (str) the name of the concatenated outfile
+    :param logfile: (str) the logfile
+    :return: the slurm stdout outfile, the unique ID written to the end of this file
+    """
+    # concatenate multiple fasta files
+    cat_str = f"cat "
+    for file in search_fasta_folder:
+        cat_str += f"{str(file)} "
+    # set job id
+    cat_unique_id = uuid.uuid4()
+    cat_job_name = f'concat'
+    run_cat = pathlib.Path(scripts_folder, "run_cat.sh")
+    concat_cmd = f"{cat_str} >> {concated_outfile}"
+    slurm_outfile = str(pathlib.Path(chain_path, "slurm5_concat-%j.out"))
+    with open(run_cat, "w") as handle:
+        handle.write("#!/bin/sh\n")
+        handle.write("#SBATCH -J gzip\n")
+        handle.write("#SBATCH --mem=1000\n")
+        handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
+        handle.write(f"{concat_cmd}\n")
+        handle.write(f"echo {cat_unique_id}")
+    os.chmod(str(run_cat), 0o777)
+
+    with open(logfile, "a") as handle:
+        handle.write(f"# concatenating multiple merged fasta files\n{concat_cmd}\n")
+
+    cmd_cat = f"sbatch -J {cat_job_name} {run_cat} --parsable --wait"
+    try:
+        cat_slurm_id = subprocess.check_output(cmd_cat, shell=True).decode(sys.stdout.encoding).strip()
+        cat_slurm_id = cat_slurm_id.split(" ")[-1]
+        cat_slurm_out_file = pathlib.Path(chain_path, f"slurm5_concat-{cat_slurm_id}.out")
+
+    except subprocess.CalledProcessError as e:
+        with open(logfile, "a") as handle:
+            handle.write(f"# concatenating fasta files failed\n{e}\n")
+        raise
+
+    return cat_slurm_out_file, cat_unique_id
+
+
 def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta_to_derep_name_stem,
                       file_to_dereplicate, logfile):
     """
@@ -743,52 +800,6 @@ def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta
         raise
 
     return derep_slurm_out_file, derep_unique_id, dereplicated_file
-
-
-def concat_fasta(chain_path, search_fasta_folder, scripts_folder, concated_outfile, logfile):
-    """
-    Function to submit slurm job for concatenating fasta files
-    :param chain_path: (str) the path to the Ab chain folder for this sample
-    :param search_fasta_folder: (str) the path to the folder with the fasta files
-    :param scripts_folder: (str) path to where the slurm submission scripts are written to
-    :param concated_outfile: (str) the name of the concatenated outfile
-    :param logfile: (str) the logfile
-    :return: the slurm stdout outfile, the unique ID written to the end of this file
-    """
-    # concatenate multiple fasta files
-    cat_str = f"cat "
-    for file in search_fasta_folder:
-        cat_str += f"{str(file)} "
-    # set job id
-    cat_unique_id = uuid.uuid4()
-    cat_job_name = f'concat'
-    run_cat = pathlib.Path(scripts_folder, "run_cat.sh")
-    concat_cmd = f"{cat_str} >> {concated_outfile}"
-    slurm_outfile = str(pathlib.Path(chain_path, "slurm5_concat-%j.out"))
-    with open(run_cat, "w") as handle:
-        handle.write("#!/bin/sh\n")
-        handle.write("#SBATCH -J gzip\n")
-        handle.write("#SBATCH --mem=1000\n")
-        handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
-        handle.write(f"{concat_cmd}\n")
-        handle.write(f"echo {cat_unique_id}")
-    os.chmod(str(run_cat), 0o777)
-
-    with open(logfile, "a") as handle:
-        handle.write(f"# concatenating multiple merged fasta files\n{concat_cmd}\n")
-
-    cmd_cat = f"sbatch -J {cat_job_name} {run_cat} --parsable --wait"
-    try:
-        cat_slurm_id = subprocess.check_output(cmd_cat, shell=True).decode(sys.stdout.encoding).strip()
-        cat_slurm_id = cat_slurm_id.split(" ")[-1]
-        cat_slurm_out_file = pathlib.Path(chain_path, f"slurm5_concat-{cat_slurm_id}.out")
-
-    except subprocess.CalledProcessError as e:
-        with open(logfile, "a") as handle:
-            handle.write(f"# concatenating fasta files failed\n{e}\n")
-        raise
-
-    return cat_slurm_out_file, cat_unique_id
 
 
 def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar_version, dir_with_sonar1_files,
@@ -1304,7 +1315,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
     """
     gb = (1024 * 1024) * 1024
     slurm_submission_jobs = []
-    sleep_time_sec = 60 * 10 * 6
+    sleep_time_sec = 60 * 10
 
     print("running sonar P1")
     with open(logfile, "a") as handle:
@@ -1376,6 +1387,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             slurm_submission_jobs.append([sonar_p1_slurm_out_file, sonar_p1_unique_id])
 
     # search for finished sonar P1 jobs and remove from list, Holds pipeline until Sonar P1 jobs are done
+    print(slurm_submission_jobs)
     check_slurm_jobs("sonar_P1", slurm_submission_jobs, sleep_time_sec, logfile)
 
 
@@ -1618,7 +1630,9 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
         print("no sonar P1 jobs found")
         with open(log_file, "a") as handle:
             handle.write(f"# no sonar P1 jobs found\n")
+
     # only run sonar 2 if one or more files were specified
+    print("s2", command_call_sonar_2)
     if command_call_sonar_2:
         print("sonar P2 jobs found")
         with open(log_file, "a") as handle:
