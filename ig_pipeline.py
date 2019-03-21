@@ -1564,7 +1564,7 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     if not list_all_settings:
         print("No jobs were found in the settings file\nCheck that the file format was correct "
               "and that it contains entries")
-        with open(log_file, "w") as handle:
+        with open(log_file, "a") as handle:
             handle.write(f"# No jobs were found in the settings file\n"
                          f"Check that the file format was correct and that it contains entries\n")
         sys.exit("exiting")
@@ -1575,7 +1575,7 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
     # only run sample processing if one or more files were specified
     if command_call_processing:
         print("processing jobs found")
-        with open(log_file, "w") as handle:
+        with open(log_file, "a") as handle:
             handle.write(f"# processing jobs found\n")
         # move files from 0_new_data, into correct directory, if necessary
         move_raw_data(path, settings_dataframe, log_file)
@@ -1585,13 +1585,13 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
         step_1_run_sample_processing(path, command_call_processing, log_file)
     else:
         print("no processing jobs found")
-        with open(log_file, "w") as handle:
+        with open(log_file, "a") as handle:
             handle.write(f"# no processing jobs found\n")
 
     # only run sonar1 if one or more files were specified
     if command_call_sonar_1:
         print("sonar P1 jobs found")
-        with open(log_file, "w") as handle:
+        with open(log_file, "a") as handle:
             handle.write(f"# sonar P1 jobs found\n")
         # get rid of duplicate entries in sonar1 list, if present
         dedup_sonar1_call = []
@@ -1608,12 +1608,12 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
         step_2_run_sonar_p1(dedup_sonar1_call, log_file)
     else:
         print("no sonar P1 jobs found")
-        with open(log_file, "w") as handle:
+        with open(log_file, "a") as handle:
             handle.write(f"# no sonar P1 jobs found\n")
     # only run sonar 2 if one or more files were specified
     if command_call_sonar_2:
         print("sonar P2 jobs found")
-        with open(log_file, "w") as handle:
+        with open(log_file, "a") as handle:
             handle.write(f"# sonar P2 jobs found\n")
         if fasta_file:
             fasta_sequences = fasta_to_dct(fasta_file)
@@ -1623,7 +1623,7 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
             sys.exit("exiting")
     else:
         print("no sonar P2 jobs found")
-        with open(log_file, "w") as handle:
+        with open(log_file, "a") as handle:
             handle.write(f"# no sonar P2 jobs found\n")
     print("Done")
 
