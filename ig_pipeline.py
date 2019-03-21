@@ -272,7 +272,7 @@ def extract_settings_make_folders(path, settings_dict, logfile):
         chain = job_settings["sonar_1_version"].lower()
         primer_name = job_settings["primer_name"].upper()
         job_list_entry = sample_id, [lineage, time_point, chain], [run_step1, run_step2, run_step3], primer_name, \
-                         known_mab_name
+            known_mab_name
         list_all_jobs_to_run.append(job_list_entry)
 
         # make the folders if they don't already exist
@@ -470,10 +470,10 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
 def check_slurm_jobs(job_name, job_list_to_check, sleep_time_sec, logfile):
     """
 
-    :param job_name:
-    :param job_list_to_check:
-    :param sleep_time_sec:
-    :param logfile:
+    :param job_name: (str) name of the program/command that was run (identifier)
+    :param job_list_to_check: (list) list of lists with ['slurm job outfile', 'unique id at the end of slurm file']
+    :param sleep_time_sec: (int) amount of time, in seconds to wait between checking for slurm job completion
+    :param logfile: (str) path and name of the logfile
     :return:
     """
     print(f"Total {job_name} jobs = {len(job_list_to_check)}")
@@ -504,15 +504,15 @@ def check_slurm_jobs(job_name, job_list_to_check, sleep_time_sec, logfile):
     return True
 
 
-def raw_files_gz(chain_path, sample_name, dir_with_raw_files, script_folder, logfile):
+def raw_files_gz(chain_path, sample_name, dir_with_raw_files, scripts_folder, logfile):
     """
-
-    :param chain_path:
-    :param sample_name:
-    :param dir_with_raw_files:
-    :param script_folder:
-    :param logfile:
-    :return:
+    Function to submit slurm job for running gzip on raw fastq files
+    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param sample_name: (str) the sample name prefix from the settings file
+    :param dir_with_raw_files: (str) the path to the dir with the raw files
+    :param scripts_folder: (str) path to where the slurm submission scripts are written to
+    :param logfile: (str) the logfile
+    :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
     search_raw_files_fastq = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq"))
     if not search_raw_files_fastq:
@@ -525,7 +525,7 @@ def raw_files_gz(chain_path, sample_name, dir_with_raw_files, script_folder, log
         # set job id
         gz_unique_id = uuid.uuid4()
         gzip_job_name = f'gzipRaw'
-        run_gzip = pathlib.Path(script_folder, "run_gzip_raw.sh")
+        run_gzip = pathlib.Path(scripts_folder, "run_gzip_raw.sh")
         cmd_gz = f"gzip {dir_with_raw_files}/*.fastq"
         slurm_outfile = str(pathlib.Path(chain_path, "slurm_gip_raw-%j.out"))
         with open(run_gzip, "w") as handle:
@@ -552,26 +552,21 @@ def raw_files_gz(chain_path, sample_name, dir_with_raw_files, script_folder, log
             raise
         search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
 
-        if not search_raw_files:
-            with open(logfile, "a") as handle:
-                handle.write(f"# No fastq files in target folder for {sample_name}\n# Trying next sample\n")
-            raise IOError
-
     return gz_slurm_out_file, gz_unique_id
 
 
-def run_pear(chain_path, sample_name, script_folder, file_r1, file_r2, merged_file_name, itern, logfile):
+def run_pear(chain_path, sample_name, scripts_folder, file_r1, file_r2, merged_file_name, itern, logfile):
     """
-
-    :param chain_path:
-    :param sample_name:
-    :param script_folder:
-    :param file_r1:
-    :param file_r2:
-    :param merged_file_name:
-    :param itern:
-    :param logfile:
-    :return:
+    Function to submit slurm job for merging paired end reads using PEAR
+    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param sample_name: (str) the sample name prefix from the settings file
+    :param scripts_folder: (str) path to where the slurm submission scripts are written to
+    :param file_r1: (str) path and name of the Forward reads file
+    :param file_r2: (str) path and name of the Reverse reads file
+    :param merged_file_name: (str) the path and name of the merged reads file
+    :param itern: (int) number to make the script unique
+    :param logfile: (str) the logfile
+    :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
     # create SLURM file to run PEAR on the cluster
     id_prefix = sample_name[3:6]
@@ -579,7 +574,7 @@ def run_pear(chain_path, sample_name, script_folder, file_r1, file_r2, merged_fi
     # set job id
     pear_unique_id = uuid.uuid4()
     pear_job_name = f"{id_prefix}{unique_suffix}PR"
-    pear_script = pathlib.Path(script_folder, f"run_pear{str(itern)}.sh")
+    pear_script = pathlib.Path(scripts_folder, f"run_pear{str(itern)}.sh")
     pear = f"/opt/conda2/pkgs/pear-0.9.6-2/bin/pear  -f {file_r1} -r {file_r2} -o {merged_file_name} " \
         f"-p 0.001 -n 300\n"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm_merge_fastq-%j.out"))
@@ -607,17 +602,17 @@ def run_pear(chain_path, sample_name, script_folder, file_r1, file_r2, merged_fi
     return pear_slurm_out_file, pear_unique_id
 
 
-def fastq2fasta(chain_path, sample_name, script_folder, fasta, merged_outfile, itern, logfile):
+def fastq2fasta(chain_path, sample_name, scripts_folder, fasta, merged_outfile, itern, logfile):
     """
-
-    :param chain_path:
-    :param sample_name:
-    :param script_folder:
-    :param fasta:
-    :param merged_outfile:
-    :param itern:
-    :param logfile:
-    :return:
+    Function to submit slurm job for converting fastq to fasta using vsearch
+    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param sample_name: (str) the sample name prefix from the settings file
+    :param scripts_folder: (str) path to where the slurm submission scripts are written to
+    :param fasta: (str) the path and name of the target fasta merged reads file
+    :param merged_outfile: (str) the path and name of the fastq merged reads file
+    :param itern: (int) number to make the script unique
+    :param logfile: (str) the logfile
+    :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
     # create fastq to fasta SLURM file
     id_prefix = sample_name[3:6]
@@ -625,7 +620,7 @@ def fastq2fasta(chain_path, sample_name, script_folder, fasta, merged_outfile, i
     # set job id
     convert_unique_id = uuid.uuid4()
     fastq_fasta_job_name = f"{id_prefix}{unique_suffix}Fa"
-    run_fastq_fasta = pathlib.Path(script_folder, f"run_convert_to_fasta{str(itern)}.sh")
+    run_fastq_fasta = pathlib.Path(scripts_folder, f"run_convert_to_fasta{str(itern)}.sh")
     convert_fastq = f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --fastq_filter {merged_outfile} " \
         f"--fastaout  {fasta} --fasta_width 0 --notrunclabels"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm_fastq_convert-%j.out"))
@@ -656,22 +651,22 @@ def fastq2fasta(chain_path, sample_name, script_folder, fasta, merged_outfile, i
     return fastq_fasta_slurm_out_file, convert_unique_id
 
 
-def merged_files_gz(chain_path, script_folder, merged_outfile, itern, logfile):
+def merged_files_gz(chain_path, scripts_folder, merged_outfile, itern, logfile):
     """
-
-    :param chain_path:
-    :param script_folder:
-    :param merged_outfile:
-    :param itern:
-    :param logfile:
-    :return:
+    Function to run gzip on merged fastq file
+    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param scripts_folder: (str) path to where the slurm submission scripts are written to
+    :param merged_outfile: (str) the path and name of the fastq merged reads file
+    :param itern: (int) number to make the script unique
+    :param logfile: (str) the logfile
+    :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
     # set job id
     print(merged_outfile)
 
     gz_unique_id = uuid.uuid4()
     gzip_job_name = f'gzip{str(itern)}'
-    run_gzip = pathlib.Path(script_folder, "run_gzip_merged.sh")
+    run_gzip = pathlib.Path(scripts_folder, "run_gzip_merged.sh")
     cmd_gzip = f"gzip {merged_outfile}"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm_gzip_merged-%j.out"))
     with open(run_gzip, "w") as handle:
@@ -703,15 +698,15 @@ def merged_files_gz(chain_path, script_folder, merged_outfile, itern, logfile):
 def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta_to_derep_name_stem,
                       file_to_dereplicate, logfile):
     """
-
-    :param chain_path:
-    :param scripts_folder:
-    :param name_stem:
-    :param derep_folder:
-    :param fasta_to_derep_name_stem:
-    :param file_to_dereplicate:
-    :param logfile:
-    :return:
+    Function to submit slurm job for dereplicating a fasta file using vsearch
+    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param scripts_folder: (str) path to where the slurm submission scripts are written to
+    :param name_stem: the stem of the sample name (participant ID: CAP255)
+    :param derep_folder: (str) the path to the target output folder
+    :param fasta_to_derep_name_stem: the stem of the input fasta file (ie: no extension)
+    :param file_to_dereplicate: (str) the path and name of the output dereplicated file
+    :param logfile: (str) the logfile
+    :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
     id_prefix = name_stem[3:6]
     unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
@@ -743,17 +738,24 @@ def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta
         derep_slurm_id = derep_slurm_id.split(" ")[-1]
         derep_slurm_out_file = pathlib.Path(chain_path, f"slurm_derep-{derep_slurm_id}.out")
 
-        # fix file permissions for output
-        os.chmod(str(dereplicated_file), 0o666)
     except subprocess.CalledProcessError as e:
         with open(logfile, "a") as handle:
             handle.write(f"# vsearch dereplication failed\n{e}\n")
         raise
 
-    return derep_slurm_out_file, derep_unique_id
+    return derep_slurm_out_file, derep_unique_id, dereplicated_file
 
 
 def concat_fasta(chain_path, search_fasta_folder, scripts_folder, concated_outfile, logfile):
+    """
+    Function to submit slurm job for concatenating fasta files
+    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param search_fasta_folder: (str) the path to the folder with the fasta files
+    :param scripts_folder: (str) path to where the slurm submission scripts are written to
+    :param concated_outfile: (str) the name of the concatenated outfile
+    :param logfile: (str) the logfile
+    :return: the slurm stdout outfile, the unique ID written to the end of this file
+    """
     # concatenate multiple fasta files
     cat_str = f"cat "
     for file in search_fasta_folder:
@@ -792,6 +794,17 @@ def concat_fasta(chain_path, search_fasta_folder, scripts_folder, concated_outfi
 
 def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar_version, dir_with_sonar1_files,
                   logfile, uniques_fasta):
+    """
+    Function to submit slurm job for sonar P1
+    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param project_folder: (str) the path to the Ab chain folder for this sample
+    :param scripts_folder: (str) path to where the slurm submission scripts are written to
+    :param sample_name: (str) name of the sample
+    :param sonar_version: (str) version of sonar to use: (heavy, kappa, lambda)
+    :param dir_with_sonar1_files: (str) the path to the dereplicated fasta file
+    :param logfile: (str) the logfile
+    :return: the slurm stdout outfile, the unique ID written to the end of this file
+    """
     id_prefix = sample_name[3:6]
     unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
     # set job id
@@ -848,14 +861,14 @@ def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar
 def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_with_sonar1_work, target_folder,
                         logfile):
     """
-
-    :param chain_path:
-    :param scripts_folder:
-    :param dir_with_sonar1_output:
-    :param dir_with_sonar1_work:
-    :param target_folder:
-    :param logfile:
-    :return:
+    Function to submit slurm job for copying sonar P1 output to the sonar P2 target dir
+    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param scripts_folder: (str) path to where the slurm submission scripts are written to
+    :param dir_with_sonar1_output: (str) the path to the sonar P1 output folder
+    :param dir_with_sonar1_work: (str) the path to the sonar P1 work folder
+    :param target_folder: (str) the path to the target sonar P2 output dir
+    :param logfile: (str) the logfile
+    :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
     # set job id
     sonar1_cp_unique_id = uuid.uuid4()
@@ -897,18 +910,18 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_
 def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, mab, scripts_folder, mab_name_file,
                   target_folder, parent_dir, logfile):
     """
-
-    :param chain_folder:
-    :param sample_name:
-    :param run_sonar2_trunc:
-    :param known_mab_name:
-    :param mab:
-    :param scripts_folder:
-    :param mab_name_file:
-    :param target_folder:
-    :param parent_dir:
-    :param logfile:
-    :return:
+    Function to submit slurm job for sonar P2
+    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param sample_name: (str) the name of the sample
+    :param run_sonar2_trunc: (bool) run the truncated sonar P2 call if you have double peaks in your sonar P1 plots
+    :param known_mab_name: (str) the name of the known mab (used as key for dict lookup)
+    :param mab: (str) either 'fullab' or 'cdr3'
+    :param scripts_folder: (str) path to where the slurm submission scripts are written to
+    :param mab_name_file: (str) the path and name to the fasta file containing the known mab sequence
+    :param target_folder: (str) the path to the target sonar P2 output dir
+    :param parent_dir: (str) the path to the project folder
+    :param logfile: (str) the logfile
+    :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
     # make Sonar P2 script
     id_prefix = sample_name[3:6]
@@ -953,7 +966,7 @@ def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, m
         sonar2_cp_slurm_id = subprocess.check_output(sonar_p2_sumbit, shell=True) \
             .decode(sys.stdout.encoding).strip()
         sonar2_cp_slurm_id = sonar2_cp_slurm_id.split(" ")[-1]
-        sonar2_outfile = pathlib.Path(parent_dir, f"slurm-{sonar2_cp_slurm_id}.out")
+        sonar2_outfile = pathlib.Path(chain_folder, f"slurm-{sonar2_cp_slurm_id}.out")
         os.chdir(parent_dir)
     except subprocess.CalledProcessError as e:
         with open(logfile, "a") as handle:
@@ -1185,6 +1198,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         handle.write(f"\n# {'-' * 10}\n# running dereplication (and concatenation if needed)\n\n")
     concat_files = []
     check_derep_jobs = []
+    dereplicatd_files = []
     for chain_folder, sample_name_list in files_to_derep_dict.items():
         check_concat_jobs = []
         scripts_folder = pathlib.Path(chain_folder, "scripts")
@@ -1240,9 +1254,10 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         with open(logfile, "a") as handle:
             handle.write(f"\n# dereplicating file {file_to_dereplicate}\n")
 
-        derep_slurm_out_file, derep_unique_id = dereplicate_fasta(chain_folder, scripts_folder, name_stem,
-                                                                  derep_folder, fasta_to_derep_name_stem,
-                                                                  file_to_dereplicate, logfile)
+        derep_slurm_out_file, derep_unique_id, dereplicated_file = \
+            dereplicate_fasta(chain_folder, scripts_folder, name_stem, derep_folder, fasta_to_derep_name_stem,
+                              file_to_dereplicate, logfile)
+        dereplicatd_files.append(dereplicated_file)
         check_derep_jobs.append([derep_slurm_out_file, derep_unique_id])
         concat_files.append(fasta_folder)
 
@@ -1263,6 +1278,10 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             with open(logfile, "a") as handle:
                 handle.write(f"# removing {file}\n")
             os.unlink(str(file))
+
+    # fix file permissoins for dereplicated file
+    for derep_file in dereplicatd_files:
+        os.chmod(str(derep_file), 0o666)
 
     with open(logfile, "a") as handle:
         handle.write(f"# processing of sample completed\n")
