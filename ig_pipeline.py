@@ -550,7 +550,6 @@ def raw_files_gz(chain_path, sample_name, dir_with_raw_files, scripts_folder, lo
             with open(logfile, "a") as handle:
                 handle.write(f"# gzip on raw file failed\n{e}\n")
             raise
-        search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
 
     return gz_slurm_out_file, gz_unique_id
 
@@ -803,6 +802,7 @@ def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar
     :param sonar_version: (str) version of sonar to use: (heavy, kappa, lambda)
     :param dir_with_sonar1_files: (str) the path to the dereplicated fasta file
     :param logfile: (str) the logfile
+    :param uniques_fasta: (str) path and name of the fasta file to run sonar P1 on
     :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
     id_prefix = sample_name[3:6]
@@ -911,7 +911,7 @@ def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, m
                   target_folder, parent_dir, logfile):
     """
     Function to submit slurm job for sonar P2
-    :param chain_path: (str) the path to the Ab chain folder for this sample
+    :param chain_folder: (str) the path to the Ab chain folder for this sample
     :param sample_name: (str) the name of the sample
     :param run_sonar2_trunc: (bool) run the truncated sonar P2 call if you have double peaks in your sonar P1 plots
     :param known_mab_name: (str) the name of the known mab (used as key for dict lookup)
