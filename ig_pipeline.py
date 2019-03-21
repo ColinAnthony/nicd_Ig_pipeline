@@ -792,7 +792,7 @@ def concat_fasta(chain_path, search_fasta_folder, scripts_folder, concated_outfi
 
 
 def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar_version, dir_with_sonar1_files,
-                  logfile, uniques_fasta):
+                  uniques_fasta, logfile):
     """
     Function to submit slurm job for sonar P1
     :param chain_path: (str) the path to the Ab chain folder for this sample
