@@ -1022,7 +1022,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     with open(logfile, "a") as handle:
         handle.write(f"\n# {'-' * 10}\n# running PEAR\n\n")
     check_pear_jobs = []
-    merged_folders = []
+    all_merged_files = []
     for item in command_call_processing:
         sample_name = item[0]
         with open(logfile, "a") as handle:
@@ -1095,7 +1095,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
                     # collect submission
                     check_pear_jobs.append([pear_slurm_out_file, pear_unique_id])
-                    merged_folders.append(merged_folder)
+                    all_merged_files.append([merged_folder, sample_name])
 
     # check for completion of pear submissions
     print("waiting for pear")
@@ -1105,9 +1105,9 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     check_slurm_jobs("pear_merge", check_pear_jobs, pear_sleep, logfile)
 
     # remove unmerged files
-    for merged_folder in merged_folders:
-        unassmebled_search = pathlib.Path(merged_folder).glob(f"{sample_name}*unassembled*.fastq")
-        discarded_search = pathlib.Path(merged_folder).glob(f"{sample_name}*discarded.fastq")
+    for [merged_fldr, name_sample] in all_merged_files:
+        unassmebled_search = pathlib.Path(merged_fldr).glob(f"{name_sample}*unassembled*.fastq")
+        discarded_search = pathlib.Path(merged_fldr).glob(f"{name_sample}*discarded.fastq")
         for file in unassmebled_search:
             os.unlink(str(file))
         for file in discarded_search:
