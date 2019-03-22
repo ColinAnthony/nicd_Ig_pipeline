@@ -582,15 +582,15 @@ def run_pear(chain_path, sample_name, scripts_folder, file_r1, file_r2, merged_f
     with open(pear_script, "w") as handle:
         handle.write("#!/bin/sh\n")
         handle.write("##SBATCH -w, --nodelist=node01\n")
-        handle.write("#SBATCH --mem=4000\n")
+        handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
         handle.write(f"{pear}\n")
         handle.write(f"echo {pear_unique_id}")
     os.chmod(str(pear_script), 0o777)
 
     with open(logfile, "a") as handle:
-        handle.write(f"# running PEAR\n{pear}\n\n")
-    cmd_pear = f"sbatch -J {pear_job_name} {pear_script} --ntasks=1 --parsable "
+        handle.write(f"# PEAR settings were:\n{pear}\n\n")
+    cmd_pear = f"sbatch -J {pear_job_name} {pear_script} --parsable "
     try:
         pear_slurm_id = subprocess.check_output(cmd_pear, shell=True).decode(sys.stdout.encoding).strip()
         pear_slurm_id = pear_slurm_id.split(" ")[-1]
@@ -1025,7 +1025,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         handle.write(f"\n# {'-' * 10}\n# running PEAR\n\n")
     check_pear_jobs = []
     all_merged = []
-    for item in command_call_processing:
+    for i, item in enumerate(command_call_processing):
         sample_name = item[0]
         with open(logfile, "a") as handle:
             handle.write(f"\n# Processing {sample_name}\n")
@@ -1062,42 +1062,41 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
                 os.unlink(str(file))
 
         # check for zipped files
-        search_zip_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
-        if search_zip_raw_files:
+        file_r1 = pathlib.Path(dir_with_raw_files, f"{sample_name}_R1.fastq.gz")
+        if file_r1.is_file():
             print("raw files found")
             with open(logfile, "a") as handle:
-                handle.write(f"# raw files found in target folder {str(search_zip_raw_files)}\n")
+                handle.write(f"# raw files found in target folder\n")
 
-            for i, file_r1 in enumerate(search_zip_raw_files):
-                file_r2 = str(file_r1).replace("_R1.fastq.gz", "_R2.fastq.gz")
-                file_r2 = pathlib.Path(file_r2)
-                # if can't find the matched paired R2 file, skip and go to next R1 file
-                if not file_r2.is_file():
-                    print(f"R2 paired file not found\nSkipping this sample: {file_r1}")
+            file_r2 = str(file_r1).replace("_R1.fastq.gz", "_R2.fastq.gz")
+            file_r2 = pathlib.Path(file_r2)
+            # if can't find the matched paired R2 file, skip and go to next R1 file
+            if not file_r2.is_file():
+                print(f"R2 paired file not found\nSkipping this sample: {file_r1}")
+                with open(logfile, "a") as handle:
+                    handle.write(f"# No R2 paired file not found\n# Skipping this sample: {file_r1}\n")
+                continue
+            # if both R1 and R2 files are present, continue with the processing
+            else:
+                # get for free disk space
+                free_space, percent_free = disk_space_checker(path)
+                file_size = os.path.getsize(file_r1) / gb * 2
+                if free_space < file_size * 4:
+                    print(f"not enough disk space to process the raw files\nNeed{file_size * 4}Gb\n"
+                          f"you have{free_space}Gb free")
                     with open(logfile, "a") as handle:
-                        handle.write(f"# No R2 paired file not found\n# Skipping this sample: {file_r1}\n")
-                    continue
-                # if both R1 and R2 files are present, continue with the processing
-                else:
-                    # get for free disk space
-                    free_space, percent_free = disk_space_checker(path)
-                    file_size = os.path.getsize(file_r1) / gb * 2
-                    if free_space < file_size * 4:
-                        print(f"not enough disk space to process the raw files\nNeed{file_size * 4}Gb\n"
-                              f"you have{free_space}Gb free")
-                        with open(logfile, "a") as handle:
-                            handle.write(
-                                f"# not enough disk space to process the raw files\n# Need {file_size * 4}Gb\n"
-                                f"# you have{free_space}Gb free\n")
-                        sys.exit("exiting")
+                        handle.write(
+                            f"# not enough disk space to process the raw files\n# Need {file_size * 4}Gb\n"
+                            f"# you have{free_space}Gb free\n")
+                    sys.exit("exiting")
 
-                    merged_file_name = pathlib.Path(merged_folder, sample_name)
-                    pear_slurm_out_file, pear_unique_id = \
-                        run_pear(chain_path, sample_name, script_folder, file_r1, file_r2, merged_file_name, i, logfile)
+                merged_file_name = pathlib.Path(merged_folder, sample_name)
+                pear_slurm_out_file, pear_unique_id = \
+                    run_pear(chain_path, sample_name, script_folder, file_r1, file_r2, merged_file_name, i, logfile)
 
-                    # collect submission
-                    check_pear_jobs.append([pear_slurm_out_file, pear_unique_id])
-                    all_merged.append([merged_folder, sample_name])
+                # collect submission
+                check_pear_jobs.append([pear_slurm_out_file, pear_unique_id])
+                all_merged.append([merged_folder, sample_name])
 
     # check for completion of pear submissions
     print("waiting for pear")
