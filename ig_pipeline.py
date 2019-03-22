@@ -999,12 +999,12 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         dir_with_raw_files = item[1]
         chain_path = dir_with_raw_files.parent
         script_folder = pathlib.Path(chain_path, "scripts")
-        search_raw_files = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq.gz"))
-        if not search_raw_files:
+        search_raw_files = pathlib.Path(dir_with_raw_files, f"{sample_name}_R1.fastq.gz")
+        if not search_raw_files.is_file():
             with open(logfile, "a") as handle:
                 handle.write(f"# No fastq.gz files in target folder for {sample_name}\n")
 
-        search_raw_files_fastq = list(dir_with_raw_files.glob(f"{sample_name}_R1.fastq"))
+        search_raw_files_fastq = list(dir_with_raw_files.glob("*.fastq"))
         if search_raw_files_fastq:
             with open(logfile, "a") as handle:
                 handle.write(f"# unzipped files sound\n# gziping the files\n")
