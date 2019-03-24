@@ -1503,7 +1503,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
 
             # check slurm sonar p1 copy jobs
-            check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec / 2, logfile)
+            check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec / 5, logfile)
 
             # check the files copied correctly
             cp_work_ok = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
