@@ -433,7 +433,6 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
                     elif i == 2:
                         command_call_sonar_2.append([sample_name, dir_with_sonar1_files, chain, known_mab_name])
                         search_sonar2_path = list(dir_with_sonar2_files.glob("command_history.log"))
-                        print(search_sonar2_path)
                         if search_sonar2_path:
                             with open(search_sonar2_path[0], 'r') as slurm_out:
                                 lines = slurm_out.read().splitlines()
@@ -882,12 +881,12 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_
 
     run_snr1cp = pathlib.Path(scripts_folder, "run_sonar1_cp.sh")
     # copy files to desired directory
-    cmd_copy_work = f"cp {dir_with_sonar1_work} {target_folder}"
-    cmd_copy_output = f"cp {dir_with_sonar1_output} {target_folder}"
+    cmd_copy_work = f"cp -r {dir_with_sonar1_work} {target_folder}"
+    cmd_copy_output = f"cp -r {dir_with_sonar1_output} {target_folder}"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm7_sonar_P2_copy-%j.out"))
 
-    print(cmd_copy_output)
     print(cmd_copy_work)
+    print(cmd_copy_output)
     input("enter")
 
     with open(run_snr1cp, "w") as handle:
@@ -1432,8 +1431,8 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         lineage = dir_with_sonar1_files.parents[2]
         chain = item[2]
         known_mab_name = item[3]
-        target_folder_full_ab = pathlib.Path(chain, f"5_{known_mab_name}", "fullmab")
-        target_folder_crdh3 = pathlib.Path(chain, f"5_{known_mab_name}", "crd3")
+        target_folder_full_ab = pathlib.Path(chain_folder, f"5_{known_mab_name}", "fullmab").absolute()
+        target_folder_crdh3 = pathlib.Path(chain_folder, f"5_{known_mab_name}", "crd3").absolute()
         fullmab_name = known_mab_name + f"_{chain}_fullmab"
         cdr3_name = known_mab_name + f"_{chain}_cdr3"
 
@@ -1450,8 +1449,8 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                 handle.write(f"# mab names in settings file don't match the names in the fasta file\n")
             raise
         # make the individual mAb fasta files
-        fullab_name_file = pathlib.Path(lineage, "mab_sequences", f"{fullmab_name}.fasta")
-        cdr3_name_file = pathlib.Path(lineage, "mab_sequences", f"{cdr3_name}.fasta")
+        fullab_name_file = pathlib.Path(lineage, "mab_sequences", f"{fullmab_name}.fasta").absolute()
+        cdr3_name_file = pathlib.Path(lineage, "mab_sequences", f"{cdr3_name}.fasta").absolute()
 
         # make fasta files
         with open(fullab_name_file, 'w') as handle:
@@ -1509,13 +1508,12 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
 
             # check slurm sonar p1 copy jobs
-            check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec, logfile)
+            check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec / 5, logfile)
 
             # check the files copied correctly
             cp_work_ok = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
             cp_output_ok = is_same(dir_with_sonar1_output, dir_with_sonar2_output)
-            print(f"work ok? {cp_work_ok}")
-            print(f"output ok? {cp_output_ok}")
+
             if not cp_work_ok and cp_output_ok:
                 print("Copied files are different from sonar P1 original files\nCopy must have failed")
                 with open(logfile, "a") as handle:
