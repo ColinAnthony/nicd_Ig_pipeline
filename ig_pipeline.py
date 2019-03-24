@@ -436,9 +436,10 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
                         print(search_sonar2_path)
                         if search_sonar2_path:
                             with open(search_sonar2_path[0], 'r') as slurm_out:
-                                sonar_p1_check_1 = " ".join(list(slurm_out)[-3].strip().split(" ")[-2:])
-                                sonar_p1_check_2 = " ".join(list(slurm_out)[-2].strip().split(" ")[-2:])
-                                sonar_p1_check_3 = " ".join(list(slurm_out)[-1].strip().split(" ")[-2:])
+                                lines = slurm_out.read().splitlines()
+                                sonar_p1_check_1 = " ".join(list(lines)[-3].strip().split(" ")[-2:])
+                                sonar_p1_check_2 = " ".join(list(lines)[-2].strip().split(" ")[-2:])
+                                sonar_p1_check_3 = " ".join(list(lines)[-1].strip().split(" ")[-2:])
                             if sonar_p1_check_1 == sonar_p1_check_2 == sonar_p1_check_3 == "finished successfully":
                                 n += 1
                     else:
@@ -794,7 +795,7 @@ def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta
 
 
 def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar_version, dir_with_sonar1_files,
-                  uniques_fasta, logfile):
+                  uniques_fasta, job_prefix, logfile):
     """
     Function to submit slurm job for sonar P1
     :param chain_path: (str) the path to the Ab chain folder for this sample
@@ -803,15 +804,16 @@ def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar
     :param sample_name: (str) name of the sample
     :param sonar_version: (str) version of sonar to use: (heavy, kappa, lambda)
     :param dir_with_sonar1_files: (str) the path to the dereplicated fasta file
+    :param job_prefix: (str) prefix for slurm job id
     :param logfile: (str) the logfile
     :param uniques_fasta: (str) path and name of the fasta file to run sonar P1 on
     :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
-    id_prefix = sample_name[3:6]
-    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+    # id_prefix = sample_name[3:6]
+    # unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
     # set job id
     sonar_p1_unique_id = uuid.uuid4()
-    sonar1_job_name = f"{id_prefix}{unique_suffix}S1"
+    sonar1_job_name = f"{job_prefix}S1"
     # get sonar P1 version specific commands
     sonar_settings = {"heavy": f"python2 /opt/conda2/pkgs/sonar/annotate/1.1-blast_V.py "
                                f"-locus H -fasta {str(uniques_fasta)} -callJ -jArgs "
@@ -861,7 +863,7 @@ def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar
 
 
 def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_with_sonar1_work, target_folder,
-                        logfile):
+                        job_prefix, logfile):
     """
     Function to submit slurm job for copying sonar P1 output to the sonar P2 target dir
     :param chain_path: (str) the path to the Ab chain folder for this sample
@@ -869,12 +871,15 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_
     :param dir_with_sonar1_output: (str) the path to the sonar P1 output folder
     :param dir_with_sonar1_work: (str) the path to the sonar P1 work folder
     :param target_folder: (str) the path to the target sonar P2 output dir
+    :param job_prefix: (str) prefix for slurm job id
     :param logfile: (str) the logfile
     :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
     # set job id
     sonar1_cp_unique_id = uuid.uuid4()
-    sonar_p1_cp = f'snr1cp'
+    # sonar_p1_cp = f'snr1cp'
+    sonar_p1_cp = f"{job_prefix}cp"
+
     run_snr1cp = pathlib.Path(scripts_folder, "run_sonar1_cp.sh")
     # copy files to desired directory
     cmd_copy_work = f"cp {dir_with_sonar1_work} {target_folder}"
@@ -910,7 +915,7 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_
 
 
 def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, mab, scripts_folder, mab_name_file,
-                  target_folder, parent_dir, logfile):
+                  target_folder, parent_dir, job_prefix, logfile):
     """
     Function to submit slurm job for sonar P2
     :param chain_folder: (str) the path to the Ab chain folder for this sample
@@ -922,15 +927,17 @@ def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, m
     :param mab_name_file: (str) the path and name to the fasta file containing the known mab sequence
     :param target_folder: (str) the path to the target sonar P2 output dir
     :param parent_dir: (str) the path to the project folder
+    :param job_prefix: (str) prefix for slurm job id
     :param logfile: (str) the logfile
     :return: the slurm stdout outfile, the unique ID written to the end of this file
     """
     # make Sonar P2 script
-    id_prefix = sample_name[3:6]
+    # id_prefix = sample_name[3:6]
     unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
     # set job id
     sonar2_unique_id = uuid.uuid4()
-    sonar2_job_name = f"{id_prefix}{unique_suffix}S2"
+    # sonar2_job_name = f"{id_prefix}{unique_suffix}S2"
+    sonar2_job_name = f"{job_prefix}S2"
     slurm_outfile = str(pathlib.Path(chain_folder, "slurm8_sonar_P2-%j.out"))
     if run_sonar2_trunc:
         sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run_trunc.sh"
@@ -1318,6 +1325,11 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
         dir_with_sonar1_work = pathlib.Path(dir_with_sonar1_files, "work")
         dir_with_sonar1_output = pathlib.Path(dir_with_sonar1_files, "output")
 
+        pid = sample_name[-3:]
+        chain_id = chain_folder.parts[-1][0].upper()
+        time_id = chain_folder.parts[-2][:3].upper()
+        job_prefix = f"{pid}{chain_id}{time_id}"
+
         with open(logfile, "a") as handle:
             handle.write(f"\n{'-'*10}\n# running Sonar P1 on {sample_name}\n")
 
@@ -1380,7 +1392,8 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             # make sonar p1 call
             sonar_p1_slurm_out_file, sonar_p1_unique_id = sonar_p1_call(chain_folder, project_folder, scripts_folder,
                                                                         sample_name, sonar_version,
-                                                                        dir_with_sonar1_files, uniques_fasta, logfile)
+                                                                        dir_with_sonar1_files, uniques_fasta,
+                                                                        job_prefix, logfile)
             slurm_submission_jobs.append([sonar_p1_slurm_out_file, sonar_p1_unique_id])
 
     # search for finished sonar P1 jobs and remove from list, Holds pipeline until Sonar P1 jobs are done
@@ -1419,6 +1432,11 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         fullmab_name = known_mab_name + f"_{chain}_fullmab"
         cdr3_name = known_mab_name + f"_{chain}_cdr3"
 
+        pid = sample_name[-3:]
+        chain_id = chain_folder.parts[-1][0].upper()
+        time_id = chain_folder.parts[-2][:3].upper()
+        job_prefix = f"{pid}{chain_id}{time_id}"
+
         try:
             mab_sequence_fullab = fasta_sequences[fullmab_name]
             mab_sequence_cdr3 = fasta_sequences[cdr3_name]
@@ -1451,6 +1469,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         for i, (target_folder, mab_name, mab_seq_file) in enumerate(to_run):
             slurm_cp_submission_jobs = []
 
+            job_prefix += mab_name[0].upper()
             # set target folders
             dir_with_sonar2_work = pathlib.Path(target_folder, "work")
             dir_with_sonar2_output = pathlib.Path(target_folder, "output")
@@ -1480,7 +1499,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             sonar1_cp_outfile, sonar1_cp_unique_id = sonar_p2_copy_files(chain_folder, scripts_folder,
                                                                          dir_with_sonar1_output,
                                                                          dir_with_sonar1_work,
-                                                                         target_folder, logfile)
+                                                                         target_folder, job_prefix, logfile)
             # collect cp job details
             slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
 
@@ -1502,7 +1521,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
 
             sonar2_outfile, sonar2_unique_id = sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc,
                                                              known_mab_name, mab[i], scripts_folder, mab_seq_file,
-                                                             target_folder, project_dir, logfile)
+                                                             target_folder, project_dir, job_prefix, logfile)
 
             slurm_sonar2_submission_jobs.append([sonar2_outfile, sonar2_unique_id])
 
