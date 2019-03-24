@@ -885,10 +885,6 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_
     cmd_copy_output = f"cp -r {dir_with_sonar1_output} {target_folder}"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm7_sonar_P2_copy-%j.out"))
 
-    print(cmd_copy_work)
-    print(cmd_copy_output)
-    input("enter")
-
     with open(run_snr1cp, "w") as handle:
         handle.write("#!/bin/sh\n")
         handle.write("#SBATCH -J gzip\n")
@@ -947,7 +943,7 @@ def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, m
         sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run_trunc.sh"
         sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
         sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
-                     f"-g /opt/conda2/pkgs/sonar/germDB/IgHKLV_cysTruncated.fa -ap muscle -t 4"
+                     f"-g /opt/conda2/pkgs/sonar/germDB/IgHKLV_cysTruncated.fa -ap muscle"
         with open(sonar_p2_run, 'w') as handle:
             handle.write("#!/bin/sh\n")
             handle.write("##SBATCH -w, --nodelist=bio-linux\n")
@@ -958,8 +954,7 @@ def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, m
     else:
         sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run.sh"
         sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
-        sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
-                     f"-ap muscle -t 4"
+        sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} -ap muscle"
         with open(sonar_p2_run, 'w') as handle:
             handle.write("#!/bin/sh\n")
             handle.write("##SBATCH -w, --nodelist=bio-linux\n")
@@ -1316,7 +1311,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
     """
     gb = (1024 * 1024) * 1024
     slurm_submission_jobs = []
-    sleep_time_sec = 60 * 10 * 1
+    sleep_time_sec = 60 * 5 * 1
 
     print("running sonar P1")
     with open(logfile, "a") as handle:
@@ -1415,7 +1410,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
     :return:
     """
     gb = (1024 * 1024) * 1024
-    sleep_time_sec = 60 * 10 * 1
+    sleep_time_sec = 60 * 5 * 1
 
     print("running sonar P2")
     with open(logfile, "a") as handle:
@@ -1508,11 +1503,12 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
 
             # check slurm sonar p1 copy jobs
-            check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec / 5, logfile)
+            check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec / 2, logfile)
 
             # check the files copied correctly
             cp_work_ok = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
             cp_output_ok = is_same(dir_with_sonar1_output, dir_with_sonar2_output)
+
 
             if not cp_work_ok and cp_output_ok:
                 print("Copied files are different from sonar P1 original files\nCopy must have failed")
