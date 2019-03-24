@@ -885,6 +885,11 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_
     cmd_copy_work = f"cp {dir_with_sonar1_work} {target_folder}"
     cmd_copy_output = f"cp {dir_with_sonar1_output} {target_folder}"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm7_sonar_P2_copy-%j.out"))
+
+    print(cmd_copy_output)
+    print(cmd_copy_work)
+    input("enter")
+
     with open(run_snr1cp, "w") as handle:
         handle.write("#!/bin/sh\n")
         handle.write("#SBATCH -J gzip\n")
@@ -1427,8 +1432,8 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         lineage = dir_with_sonar1_files.parents[2]
         chain = item[2]
         known_mab_name = item[3]
-        target_folder_full_ab = pathlib.Path(f"5_{known_mab_name}", "fullmab")
-        target_folder_crdh3 = pathlib.Path(f"5_{known_mab_name}", "crd3")
+        target_folder_full_ab = pathlib.Path(chain, f"5_{known_mab_name}", "fullmab")
+        target_folder_crdh3 = pathlib.Path(chain, f"5_{known_mab_name}", "crd3")
         fullmab_name = known_mab_name + f"_{chain}_fullmab"
         cdr3_name = known_mab_name + f"_{chain}_cdr3"
 
