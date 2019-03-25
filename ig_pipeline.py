@@ -861,14 +861,12 @@ def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar
     return sonar_p1_slurm_out_file, sonar_p1_unique_id
 
 
-def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_with_sonar1_work, target_folder,
-                        job_prefix, logfile):
+def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_files, target_folder, job_prefix, logfile):
     """
     Function to submit slurm job for copying sonar P1 output to the sonar P2 target dir
     :param chain_path: (str) the path to the Ab chain folder for this sample
     :param scripts_folder: (str) path to where the slurm submission scripts are written to
-    :param dir_with_sonar1_output: (str) the path to the sonar P1 output folder
-    :param dir_with_sonar1_work: (str) the path to the sonar P1 work folder
+    :param dir_with_sonar1_files: (str) the path to the sonar P1 files and folders
     :param target_folder: (str) the path to the target sonar P2 output dir
     :param job_prefix: (str) prefix for slurm job id
     :param logfile: (str) the logfile
@@ -878,11 +876,9 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_
     sonar1_cp_unique_id = uuid.uuid4()
     # sonar_p1_cp = f'snr1cp'
     sonar_p1_cp = f"{job_prefix}cp"
-
     run_snr1cp = pathlib.Path(scripts_folder, "run_sonar1_cp.sh")
     # copy files to desired directory
-    cmd_copy_work = f"cp -r {dir_with_sonar1_work} {target_folder}"
-    cmd_copy_output = f"cp -r {dir_with_sonar1_output} {target_folder}"
+    cmd_copy_sonar1 = f"cp -r {dir_with_sonar1_files} {target_folder}"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm7_sonar_P2_copy-%j.out"))
 
     with open(run_snr1cp, "w") as handle:
@@ -890,14 +886,12 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_output, dir_
         handle.write("#SBATCH -J gzip\n")
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
-        handle.write(f"{cmd_copy_work}\n")
-        handle.write(f"{cmd_copy_output}\n")
+        handle.write(f"{cmd_copy_sonar1}\n")
         handle.write(f"echo {sonar1_cp_unique_id}")
     os.chmod(str(run_snr1cp), 0o777)
 
     with open(logfile, "a") as handle:
-        handle.write(f"# copyting Sonar P1 output to target directory\n{cmd_copy_work}"
-                     f"\n{cmd_copy_output}")
+        handle.write(f"# copyting Sonar P1 output to target directory\n{target_folder}")
 
     cmd_snr1_cp = f"sbatch -J {sonar_p1_cp} {run_snr1cp}"
     try:
@@ -1143,7 +1137,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         # make sure input exists
         if not merged_outfile.is_file():
             with open(logfile, "a") as handle:
-                handle.write(f"# Pear output {merged_outfile} is mising\n")
+                handle.write(f"# Pear output {merged_outfile} is missing\n")
             continue
         else:
             # fix file permissions for output
@@ -1323,6 +1317,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
         scripts_folder = pathlib.Path(dir_with_sonar1_files.parent, "scripts")
         dir_with_sonar1_work = pathlib.Path(dir_with_sonar1_files, "work")
         dir_with_sonar1_output = pathlib.Path(dir_with_sonar1_files, "output")
+        input_fasta_file = pathlib.Path(dir_with_sonar1_files, f"{sample_name}.uniq")
 
         pid = sample_name[-3:]
         chain_id = chain_folder.parts[-1][0].upper()
@@ -1496,14 +1491,14 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
 
             # copy data from sonar P1 output
             sonar1_cp_outfile, sonar1_cp_unique_id = sonar_p2_copy_files(chain_folder, scripts_folder,
-                                                                         dir_with_sonar1_output,
-                                                                         dir_with_sonar1_work,
-                                                                         target_folder, job_prefix, logfile)
+                                                                         dir_with_sonar1_files, target_folder,
+                                                                         job_prefix, logfile)
             # collect cp job details
             slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
 
             # check slurm sonar p1 copy jobs
-            check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec / 5, logfile)
+            check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec / 5
+                             , logfile)
 
             # check the files copied correctly
             cp_work_ok = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
