@@ -296,7 +296,8 @@ def make_folders(path, lineage, time_point, chain, known_mab_name, logfile):
     :return: None
     """
     known_mab_name = "5_" + known_mab_name
-
+    pid = str(path.parts[-1])
+    sonar_p1_out_name = f"{pid}_{time_point}_{chain}"
     pathlib.Path(path, lineage, "mab_sequences").mkdir(mode=0o777, parents=True, exist_ok=True)
 
     pathlib.Path(path, lineage, time_point, chain, "scripts").mkdir(mode=0o777, parents=True, exist_ok=True)
@@ -307,7 +308,8 @@ def make_folders(path, lineage, time_point, chain, known_mab_name, logfile):
 
     pathlib.Path(path, lineage, time_point, chain, "3_fasta").mkdir(mode=0o777, parents=True, exist_ok=True)
 
-    pathlib.Path(path, lineage, time_point, chain, "4_dereplicated").mkdir(mode=0o777, parents=True, exist_ok=True)
+    pathlib.Path(path, lineage, time_point, chain, f"4_{sonar_p1_out_name}").mkdir(mode=0o777, parents=True,
+                                                                                   exist_ok=True)
 
     pathlib.Path(path, lineage, time_point, chain, known_mab_name, "crd3").mkdir(mode=0o777, parents=True,
                                                                                  exist_ok=True)
@@ -384,7 +386,7 @@ def move_raw_data(path, settings_dataframe, logfile):
 
             try:
                 with open(logfile, "a") as handle:
-                    handle.write(f"# moving {full_name} to 1_raw_data failed\n{e}\n")
+                    handle.write(f"# moving {full_name} to 1_raw_data\n")
                 subprocess.call(mv, shell=True)
             except subprocess.CalledProcessError as e:
                 with open(logfile, "a") as handle:
@@ -411,11 +413,16 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
         # primer_name = job_entry[3]
         known_mab_name = job_entry[4]
         run_steps = job_entry[2]
+        pid = job_entry[0][-3:]
+        time_point = job_entry[1][1]
         chain = job_entry[1][2]
+
+        sonar_p1_out_name = f"{pid}_{time_point}_{chain}"
         dir_with_raw_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "1_raw_data")
-        dir_with_sonar1_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "4_dereplicated")
-        dir_with_sonar2_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "4_dereplicated",
-                                             "output", "logs")
+        dir_with_sonar1_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2],
+                                             f"4_{sonar_p1_out_name}")
+        dir_with_sonar2_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2],
+                                             f"4_{sonar_p1_out_name}", "output", "logs")
         if 1 in run_steps:
             for i, step in enumerate(run_steps):
                 if step == 1:
@@ -434,7 +441,7 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
                         command_call_sonar_2.append([sample_name, dir_with_sonar1_files, chain, known_mab_name])
                         search_sonar2_path = list(dir_with_sonar2_files.glob("command_history.log"))
                         if search_sonar2_path:
-                            with open(search_sonar2_path[0], 'r') as slurm_out:
+                            with open(str(search_sonar2_path[0]), 'r') as slurm_out:
                                 lines = slurm_out.read().splitlines()
                                 sonar_p1_check_1 = " ".join(list(lines)[-3].strip().split(" ")[-2:])
                                 sonar_p1_check_2 = " ".join(list(lines)[-2].strip().split(" ")[-2:])
@@ -812,7 +819,7 @@ def sonar_p1_call(chain_path, project_folder, scripts_folder, sample_name, sonar
     # unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
     # set job id
     sonar_p1_unique_id = uuid.uuid4()
-    sonar1_job_name = f"{job_prefix}S1"
+    sonar1_job_name = f"{job_prefix}"
     # get sonar P1 version specific commands
     sonar_settings = {"heavy": f"python2 /opt/conda2/pkgs/sonar/annotate/1.1-blast_V.py "
                                f"-locus H -fasta {str(uniques_fasta)} -callJ -jArgs "
@@ -875,10 +882,10 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_files, targe
     # set job id
     sonar1_cp_unique_id = uuid.uuid4()
     # sonar_p1_cp = f'snr1cp'
-    sonar_p1_cp = f"{job_prefix}cp"
+    sonar_p1_cp = f"{job_prefix}C"
     run_snr1cp = pathlib.Path(scripts_folder, "run_sonar1_cp.sh")
     # copy files to desired directory
-    cmd_copy_sonar1 = f"cp -r {dir_with_sonar1_files} {target_folder}"
+    cmd_copy_sonar1 = f"cp -r {dir_with_sonar1_files}/* {target_folder}"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm7_sonar_P2_copy-%j.out"))
 
     with open(run_snr1cp, "w") as handle:
@@ -891,7 +898,7 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_files, targe
     os.chmod(str(run_snr1cp), 0o777)
 
     with open(logfile, "a") as handle:
-        handle.write(f"# copyting Sonar P1 output to target directory\n{target_folder}")
+        handle.write(f"# copying Sonar P1 output to target directory\n{target_folder}\n")
 
     cmd_snr1_cp = f"sbatch -J {sonar_p1_cp} {run_snr1cp}"
     try:
@@ -931,13 +938,18 @@ def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, m
     # set job id
     sonar2_unique_id = uuid.uuid4()
     # sonar2_job_name = f"{id_prefix}{unique_suffix}S2"
-    sonar2_job_name = f"{job_prefix}S2"
+    sonar2_job_name = f"{job_prefix}"
     slurm_outfile = str(pathlib.Path(chain_folder, "slurm8_sonar_P2-%j.out"))
-    if run_sonar2_trunc:
+    if run_sonar2_trunc and mab == "cdr3":
+        with open(logfile, "a") as handle:
+            handle.write(f"# Running truncated sonar P2 script")
         sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run_trunc.sh"
         sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
         sonar2_cmd = f"/usr/bin/perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
                      f"-g /opt/conda2/pkgs/sonar/germDB/IgHKLV_cysTruncated.fa -ap muscle"
+
+        print(sonar2_cmd)
+        input("enter")
         with open(sonar_p2_run, 'w') as handle:
             handle.write("#!/bin/sh\n")
             handle.write("##SBATCH -w, --nodelist=bio-linux\n")
@@ -948,7 +960,8 @@ def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, m
     else:
         sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run.sh"
         sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
-        sonar2_cmd = f"/usr/bin/perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} -ap muscle"
+        sonar2_cmd = f"/usr/bin/perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
+            f"-ap muscle"
         with open(sonar_p2_run, 'w') as handle:
             handle.write("#!/bin/sh\n")
             handle.write("##SBATCH -w, --nodelist=bio-linux\n")
@@ -1317,9 +1330,8 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
         scripts_folder = pathlib.Path(dir_with_sonar1_files.parent, "scripts")
         dir_with_sonar1_work = pathlib.Path(dir_with_sonar1_files, "work")
         dir_with_sonar1_output = pathlib.Path(dir_with_sonar1_files, "output")
-        input_fasta_file = pathlib.Path(dir_with_sonar1_files, f"{sample_name}.uniq")
 
-        pid = sample_name[-3:]
+        pid = sample_name.split("_")[0][-3:]
         chain_id = chain_folder.parts[-1][0].upper()
         time_id = chain_folder.parts[-2][:3].upper()
         job_prefix = f"{pid}{chain_id}{time_id}"
@@ -1329,7 +1341,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
 
         # check whether there is already sonar P1 output in the target folders (if this is a rerun)+
         if dir_with_sonar1_output.is_dir() and dir_with_sonar1_output.exists():
-            print("outout folder being deleted")
+            print("output folder being deleted")
             shutil.rmtree(dir_with_sonar1_output)
         if dir_with_sonar1_work.is_dir() and dir_with_sonar1_work.exists():
             print("work folder being deleted")
@@ -1426,7 +1438,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         fullmab_name = known_mab_name + f"_{chain}_fullmab"
         cdr3_name = known_mab_name + f"_{chain}_cdr3"
 
-        pid = sample_name[-3:]
+        pid = sample_name.split("_")[0][-3:]
         chain_id = chain_folder.parts[-1][0].upper()
         time_id = chain_folder.parts[-2][:3].upper()
         job_prefix = f"{pid}{chain_id}{time_id}"
@@ -1463,18 +1475,19 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         for i, (target_folder, mab_name, mab_seq_file) in enumerate(to_run):
             slurm_cp_submission_jobs = []
 
-            job_prefix += mab_name[0].upper()
+            job_prefix += mab_name.split("_")[1].upper()
+            job_prefix += mab[i][0]
+
             # set target folders
             dir_with_sonar2_work = pathlib.Path(target_folder, "work")
             dir_with_sonar2_output = pathlib.Path(target_folder, "output")
 
             # check for existing target dirs and delete
-            if dir_with_sonar2_output.is_dir() and dir_with_sonar2_output.exists():
-                print("outout folder being deleted")
-                shutil.rmtree(dir_with_sonar2_output)
-            if dir_with_sonar2_work.is_dir() and dir_with_sonar2_work.exists():
-                print("work folder being deleted")
-                shutil.rmtree(dir_with_sonar2_work)
+            if (dir_with_sonar2_output.is_dir() and dir_with_sonar2_output.exists()) or\
+                    (dir_with_sonar2_work.is_dir() and dir_with_sonar2_work.exists()):
+                    print("output and work folders are being deleted")
+                    shutil.rmtree(dir_with_sonar2_output)
+                    shutil.rmtree(dir_with_sonar2_work)
 
             # check for free disk space
             free_space, percent_free = disk_space_checker(project_dir)
@@ -1497,13 +1510,14 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
 
             # check slurm sonar p1 copy jobs
-            check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec / 5
-                             , logfile)
+            check_slurm_jobs("cp_sonar_P1_files", slurm_cp_submission_jobs, sleep_time_sec / 5, logfile)
 
             # check the files copied correctly
-            cp_work_ok = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
-            cp_output_ok = is_same(dir_with_sonar1_output, dir_with_sonar2_output)
-
+            try:
+                cp_work_ok = is_same(dir_with_sonar1_work, dir_with_sonar2_work)
+                cp_output_ok = is_same(dir_with_sonar1_output, dir_with_sonar2_output)
+            except FileNotFoundError:
+                raise
 
             if not cp_work_ok and cp_output_ok:
                 print("Copied files are different from sonar P1 original files\nCopy must have failed")
@@ -1514,7 +1528,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                 continue
 
             sonar2_outfile, sonar2_unique_id = sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc,
-                                                             known_mab_name, mab[i], scripts_folder, mab_seq_file,
+                                                             mab_name, mab[i], scripts_folder, mab_seq_file,
                                                              target_folder, project_dir, job_prefix, logfile)
 
             slurm_sonar2_submission_jobs.append([sonar2_outfile, sonar2_unique_id])
