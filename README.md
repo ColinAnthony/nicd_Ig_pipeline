@@ -52,47 +52,49 @@ include an entry for each mAb, as shown in the settings template
 
 ## **To run the pipeline:**
     
-* create a project folder (usually named after the participant)
+* create a project folder (usually named after the participant: CAP255 or CAP008... etc.)
 * inside this folder, create a folder called 0_new_data
     * copy your .zip archive containing the Illumina paired end files into this folder
-        * also accepts .gz compressed files or .fastq files
+        * also accepts .gz compressed files or .fastq files, but these will just be gzip'd, so rather keep them as .gz files
     * prepare your settings.csv file, indicating which steps to run on which samples
         * if running additional samples, set previous samples to '0' in the three run_step columns
 * create a fasta file with your with all the mAb sequencse you will need for sonar P2
-    * the names of the sequences must contain fields PID, Primer_name, chain, and either cdr3 or fullab
+    * **NOTE: the names of the sequences must contain fields PID, Primer_name, chain, and either cdr3 or fullab**
     
     eg:
     
-        >CAP255_C5_heavy_fullab
+        >CAP255_C5_heavy_fullmab
         AGTGAGTGAGAGTGAGTGAG...
         >CAP255_C5_heavy_cdr3
         AGTGAGTGAG
-        >CAP255_G3_heavy_fullab
+        >CAP255_G3_heavy_fullmab
         AGTGAGTGAGAGTGAGTGAG...
         >CAP255_G3_heavy_cdr3
         AGTGAGTGAG
-        >CAP255_C5_lambda_fullab
+        >CAP255_C5_lambda_fullmab
         AGTGAGTGAGAGTGAGTGAG...
         >CAP255_C5_lambda_cdr3
         AGTGAGTGAG
-        >CAP255_G3_lambda_fullab
+        >CAP255_G3_lambda_fullmab
         AGTGAGTGAGAGTGAGTGAG...
         >CAP255_G3_lambda_cdr3
         AGTGAGTGAG
 
 ## run the wrapper script:
-    * use `screen` or `nohup` as the run times will be long.
+    * use `screen` as the run times will be long and you don't want to crash your run when you log out
     
-        If you need to install screen
-    `sudo apt install screen`
+        If you need to install screen (it should be on linux by default)
+    `sudo apt install screen` or sudo yum install screen
     
     Run:
     `screen -S <job_name>`
+    where <job_name> is something that identifies you and the run
+    eg: colin_CAP255
     
     This will start the screen session
     
     Now run:     
-     `ig_pipeline.py -p <project_path> -s <settings_file> -f <fasta_file>`
+     `python3.6 /path/to/script/ig_pipeline.py -p <project_path> -s <settings_file> -f <fasta_file>`
     
     This will start the pipeline.
     
@@ -117,7 +119,8 @@ include an entry for each mAb, as shown in the settings template
  ## Step 1
  * makes the required folders
  * moves all fastq.gz files to the target folders
- * runs gzip on all fastq files if they are not already gzip'd to save space
+    * removes existing output if it is present (merged fastq, fasta and dereplicated fasta files)
+    * runs gzip on all fastq files if they are not already gzip'd to save space
  * runs PEAR an all raw files to merge forward and reverse reads, with quality and length filters
  * converts all merged files from fastq to fasta
  * removes unmerged files to save space
@@ -125,9 +128,11 @@ include an entry for each mAb, as shown in the settings template
  * dereplicates all merged.fasta files
  
  ## Step 2
+ * Checks if sonar P1 output folders exits  and removes them if present
  * runs sonar P1 on all dereplicated files from step 1
  
  ## Step 3
+ * checks if output files are present in sonar P2 target directory, removes them if found
  * copies sonar P1 output to the sonar P2 target folders
  * runs sonar P2 an all sonar P1 folders
     * once using the full known Ab sequence
