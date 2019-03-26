@@ -1649,7 +1649,7 @@ def main(path, settings, fasta_file=None, run_sonar2_trunc=False):
 
 
 if __name__ == "__main__":
-    args = docopt(__doc__, version='V0.1.0')
+    args = docopt(__doc__, version='V1.0.0')
 
     main(path=args["<project_path>"], settings=args["<settings_file>"], fasta_file=args["<fasta_file>"],
          run_sonar2_trunc=args["--run_sonar2_trunc"])
