@@ -936,7 +936,7 @@ def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, m
     if run_sonar2_trunc:
         sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run_trunc.sh"
         sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
-        sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
+        sonar2_cmd = f"/usr/bin/perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
                      f"-g /opt/conda2/pkgs/sonar/germDB/IgHKLV_cysTruncated.fa -ap muscle"
         with open(sonar_p2_run, 'w') as handle:
             handle.write("#!/bin/sh\n")
@@ -948,7 +948,7 @@ def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, m
     else:
         sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run.sh"
         sonar_p2_run = pathlib.Path(scripts_folder, sonar_p2_run)
-        sonar2_cmd = f"perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} -ap muscle"
+        sonar2_cmd = f"/usr/bin/perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} -ap muscle"
         with open(sonar_p2_run, 'w') as handle:
             handle.write("#!/bin/sh\n")
             handle.write("##SBATCH -w, --nodelist=bio-linux\n")
