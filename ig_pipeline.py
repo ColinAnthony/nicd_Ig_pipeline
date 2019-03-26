@@ -923,7 +923,7 @@ def sonar_p2_call(chain_folder, sample_name, run_sonar2_trunc, known_mab_name, m
     :param sample_name: (str) the name of the sample
     :param run_sonar2_trunc: (bool) run the truncated sonar P2 call if you have double peaks in your sonar P1 plots
     :param known_mab_name: (str) the name of the known mab (used as key for dict lookup)
-    :param mab: (str) either 'fullab' or 'cdr3'
+    :param mab: (str) either 'fullmab' or 'cdr3'
     :param scripts_folder: (str) path to where the slurm submission scripts are written to
     :param mab_name_file: (str) the path and name to the fasta file containing the known mab sequence
     :param target_folder: (str) the path to the target sonar P2 output dir
@@ -1444,20 +1444,20 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         job_prefix = f"{pid}{chain_id}{time_id}"
 
         try:
-            mab_sequence_fullab = fasta_sequences[fullmab_name]
+            mab_sequence_fullmab = fasta_sequences[fullmab_name]
             mab_sequence_cdr3 = fasta_sequences[cdr3_name]
         except KeyError:
             with open(logfile, "a") as handle:
                 handle.write(f"# mab names in settings file don't match the names in the fasta file\n")
             raise
         # make the individual mAb fasta files
-        fullab_name_file = pathlib.Path(lineage, "mab_sequences", f"{fullmab_name}.fasta").absolute()
+        fullmab_name_file = pathlib.Path(lineage, "mab_sequences", f"{fullmab_name}.fasta").absolute()
         cdr3_name_file = pathlib.Path(lineage, "mab_sequences", f"{cdr3_name}.fasta").absolute()
 
         # make fasta files
-        with open(fullab_name_file, 'w') as handle:
-            handle.write(f">{fullmab_name}\n{mab_sequence_fullab}\n")
-        os.chmod(str(fullab_name_file), 0o666)
+        with open(fullmab_name_file, 'w') as handle:
+            handle.write(f">{fullmab_name}\n{mab_sequence_fullmab}\n")
+        os.chmod(str(fullmab_name_file), 0o666)
 
         with open(cdr3_name_file, 'w') as handle:
             handle.write(f">{cdr3_name}\n{mab_sequence_cdr3}\n")
@@ -1468,9 +1468,9 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         dir_with_sonar1_output = pathlib.Path(dir_with_sonar1_files, "output")
 
         # run sonar P2 on full antibody and on cdr3 region
-        to_run = [(target_folder_full_ab, fullmab_name, fullab_name_file),
+        to_run = [(target_folder_full_ab, fullmab_name, fullmab_name_file),
                   (target_folder_crdh3, cdr3_name, cdr3_name_file)]
-        mab = ["fullab", "cdr3"]
+        mab = ["fullmab", "cdr3"]
 
         for i, (target_folder, mab_name, mab_seq_file) in enumerate(to_run):
             slurm_cp_submission_jobs = []
