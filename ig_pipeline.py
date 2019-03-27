@@ -945,7 +945,7 @@ def sonar_p2_call(chain_folder, run_sonar2_trunc, known_mab_name, mab, scripts_f
     # make Sonar P2 script
     # set job id
     sonar2_unique_id = uuid.uuid4()
-    sonar2_job_name = f"{job_prefix}S2"
+    sonar2_job_name = f"{job_prefix}2"
     slurm_outfile = str(pathlib.Path(chain_folder, "slurm8_sonar_P2-%j.out"))
     if run_sonar2_trunc and mab == "cdr3":
         with open(logfile, "a") as handle:
@@ -1008,7 +1008,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     """
     # Bites to Gb adjustment
     gb = (1024 * 1024) * 1024
-    sleep_time_sec = 60 * 2
+    sleep_time_sec = 60 * 1 * 1
 
     # check that raw files are gzipped
     check_gz_raw_jobs = []
@@ -1324,7 +1324,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
     """
     gb = (1024 * 1024) * 1024
     slurm_submission_jobs = []
-    sleep_time_sec = 60 * 5 * 1
+    sleep_time_sec = 60 * 1 * 1
 
     print("running sonar P1")
     with open(logfile, "a") as handle:
@@ -1422,7 +1422,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
     :return:
     """
     gb = (1024 * 1024) * 1024
-    sleep_time_sec = 60 * 5 * 1
+    sleep_time_sec = 60 * 1 * 1
 
     print("running sonar P2")
     with open(logfile, "a") as handle:
