@@ -59,7 +59,14 @@ include an entry for each mAb, as shown in the settings template
     * prepare your settings.csv file, indicating which steps to run on which samples
         * if running additional samples, set previous samples to '0' in the three run_step columns
 * create a fasta file with your with all the mAb sequencse you will need for sonar P2
-    * **NOTE: the names of the sequences must contain fields PID, Primer_name, chain, and either cdr3 or fullab**
+    * **NOTE: the names of the sequences must contain fields:**
+                
+                * PID (CAP008), 
+                * Primer_name (2 character code for primer), 
+                * chain (either 'heavy', 'lambda' or 'kappa', 
+                * and either 
+                * 'cdr3' or 
+                * 'fullmab'
     
     eg:
     

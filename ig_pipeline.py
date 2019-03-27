@@ -974,7 +974,8 @@ def sonar_p2_call(chain_folder, run_sonar2_trunc, known_mab_name, mab, scripts_f
             handle.write("##SBATCH -w, --nodelist=bio-linux\n")
             handle.write("#SBATCH --mem=4000\n\n")
             handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
-            handle.write(f"{sonar2_cmd}\n")
+            handle.write(f"{str(sonar2_cmd)}\n")
+            handle.write(f"echo {sonar2_cmd}\n")
             handle.write(f"echo {sonar2_unique_id}\n")
     os.chmod(str(sonar_p2_run), 0o777)
 
@@ -1482,7 +1483,8 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
 
             job_prefix += mab_name.split("_")[1][:2].upper()
             job_prefix += mab[i][0]
-
+            print("prefix:    ", job_prefix)
+            input("enter")
             # set target folders
             dir_with_sonar2_work = pathlib.Path(target_folder, "work")
             dir_with_sonar2_output = pathlib.Path(target_folder, "output")
