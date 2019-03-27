@@ -1431,6 +1431,27 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
     with open(logfile, "a") as handle:
         handle.write(f"\n# {'-' * 10}\n# running sonar P2\n")
 
+    # remove existing files
+    for item in command_call_sonar_2:
+        dir_with_sonar1_files = item[1]
+        chain_folder = pathlib.Path(dir_with_sonar1_files.parent)
+        known_mab_name = item[3]
+        dir_with_sonar2_work_full = pathlib.Path(chain_folder, f"5_{known_mab_name}", "fullmab", "work").absolute()
+        dir_with_sonar2_output_full = pathlib.Path(chain_folder, f"5_{known_mab_name}", "fullmab", "output").absolute()
+        dir_with_sonar2_work_cdr = pathlib.Path(chain_folder, f"5_{known_mab_name}", "crd3", "work").absolute()
+        dir_with_sonar2_output_cdr = pathlib.Path(chain_folder, f"5_{known_mab_name}", "crd3", "output").absolute()
+
+        # check for existing target dirs and delete
+        for flder_branch in [dir_with_sonar2_work_full, dir_with_sonar2_output_full, dir_with_sonar2_work_cdr,
+                             dir_with_sonar2_output_cdr]:
+            if flder_branch.is_dir():
+                print("output folder is being deleted")
+                shutil.rmtree(flder_branch)
+
+        for file in pathlib.Path(dir_with_sonar1_files).glob("*_unique.fasta"):
+            os.unlink(str(file))
+
+    # copy the data and run sonar P2
     slurm_sonar2_submission_jobs = []
     for item in command_call_sonar_2:
         # sample_name = item[0]
@@ -1450,7 +1471,6 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         chain_id = chain_folder.parts[-1][0].upper()
         time_id = chain_folder.parts[-2][:3].upper()
         job_prefix = f"{chain_id}{time_id}"
-
         try:
             mab_sequence_fullmab = fasta_sequences[fullmab_name]
             mab_sequence_cdr3 = fasta_sequences[cdr3_name]
@@ -1489,15 +1509,6 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             # set target folders
             dir_with_sonar2_work = pathlib.Path(target_folder, "work")
             dir_with_sonar2_output = pathlib.Path(target_folder, "output")
-
-            # check for existing target dirs and delete
-            if dir_with_sonar2_output.is_dir() and dir_with_sonar2_output.exists():
-                    print("output folder is being deleted")
-                    shutil.rmtree(dir_with_sonar2_output)
-
-            if dir_with_sonar2_work.is_dir() and dir_with_sonar2_work.exists():
-                    print("work folders are being deleted")
-                    shutil.rmtree(dir_with_sonar2_work)
 
             # check for free disk space
             free_space, percent_free = disk_space_checker(project_dir)
