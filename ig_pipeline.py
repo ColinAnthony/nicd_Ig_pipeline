@@ -279,15 +279,16 @@ def extract_settings_make_folders(path, settings_dict, logfile):
         # make the folders if they don't already exist
         with open(logfile, "a") as handle:
             handle.write("\n# Making necessary folders for project\n")
-        make_folders(path, lineage, time_point, chain, known_mab_name, logfile)
+        make_folders(path, sample_id, lineage, time_point, chain, known_mab_name, logfile)
 
     return list_all_jobs_to_run
 
 
-def make_folders(path, lineage, time_point, chain, known_mab_name, logfile):
+def make_folders(path, sample_id, lineage, time_point, chain, known_mab_name, logfile):
     """
     function to create the nested folder structure for the nAb pileline, if they don't already exist
     :param path: (str) the path to the project folder
+    :param sample_id (str) the sample name
     :param lineage: (str) Ab lineage name
     :param time_point: (str) the time point the NGS data was sampled from
     :param chain: (str) the Ab chain (heavy, kappa, lambda)
@@ -296,7 +297,7 @@ def make_folders(path, lineage, time_point, chain, known_mab_name, logfile):
     :return: None
     """
     known_mab_name = "5_" + known_mab_name
-    pid = str(path.parts[-1])
+    pid = sample_id.split("_")[0]
     sonar_p1_out_name = f"{pid}_{time_point}_{chain}"
     pathlib.Path(path, lineage, "mab_sequences").mkdir(mode=0o777, parents=True, exist_ok=True)
 
@@ -417,11 +418,13 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
         time_point = job_entry[1][1]
         chain = job_entry[1][2]
 
-        sonar_p1_out_name = f"{pid}_{time_point}_{chain}"
+        pid_name = sample_name.split("_")[0]
+        sonar_p1_out_name = f"{pid_name}_{time_point}_{chain}"
+
         dir_with_raw_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2], "1_raw_data")
         dir_with_sonar1_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2],
                                              f"4_{sonar_p1_out_name}")
-        dir_with_sonar2_files = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2],
+        dir_with_sonar2_infiles = pathlib.Path(path, job_entry[1][0], job_entry[1][1], job_entry[1][2],
                                              f"4_{sonar_p1_out_name}", "output", "logs")
         if 1 in run_steps:
             for i, step in enumerate(run_steps):
@@ -439,9 +442,9 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
                             n += 1
                     elif i == 2:
                         command_call_sonar_2.append([sample_name, dir_with_sonar1_files, chain, known_mab_name])
-                        search_sonar2_path = list(dir_with_sonar2_files.glob("command_history.log"))
-                        if search_sonar2_path:
-                            with open(str(search_sonar2_path[0]), 'r') as slurm_out:
+                        dir_with_sonar2_infiles = list(dir_with_sonar2_infiles.glob("command_history.log"))
+                        if dir_with_sonar2_infiles:
+                            with open(str(dir_with_sonar2_infiles[0]), 'r') as slurm_out:
                                 lines = slurm_out.read().splitlines()
                                 sonar_p1_check_1 = " ".join(list(lines)[-3].strip().split(" ")[-2:])
                                 sonar_p1_check_2 = " ".join(list(lines)[-2].strip().split(" ")[-2:])
