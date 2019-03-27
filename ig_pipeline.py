@@ -893,7 +893,7 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_files, targe
     # set job id
     sonar1_cp_unique_id = uuid.uuid4()
     # sonar_p1_cp = f'snr1cp'
-    sonar_p1_cp = f"{job_prefix}CP"
+    sonar_p1_cp = f"{job_prefix}c"
     run_snr1cp = pathlib.Path(scripts_folder, "run_sonar1_cp.sh")
     # copy files to desired directory
     cmd_copy_sonar1 = f"cp -r {dir_with_sonar1_files}/* {target_folder}"
@@ -905,6 +905,7 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_files, targe
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
         handle.write(f"{cmd_copy_sonar1}\n")
+        handle.write(f"echo {cmd_copy_sonar1}\n")
         handle.write(f"echo {sonar1_cp_unique_id}")
     os.chmod(str(run_snr1cp), 0o777)
 
@@ -963,6 +964,7 @@ def sonar_p2_call(chain_folder, run_sonar2_trunc, known_mab_name, mab, scripts_f
             handle.write("#SBATCH --mem=4000\n")
             handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
             handle.write(f"{sonar2_cmd}\n")
+            handle.write(f"echo {sonar2_cmd}\n")
             handle.write(f"echo {sonar2_unique_id}\n")
     else:
         sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run.sh"
@@ -1481,19 +1483,20 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
         for i, (target_folder, mab_name, mab_seq_file) in enumerate(to_run):
             slurm_cp_submission_jobs = []
 
-            job_prefix += mab_name.split("_")[1][:2].upper()
-            job_prefix += mab[i][0]
-            print("prefix:    ", job_prefix)
-            input("enter")
+            job_prefix_id = job_prefix + mab_name.split("_")[1][:2].upper()
+            job_prefix_id += mab[i][0]
+
             # set target folders
             dir_with_sonar2_work = pathlib.Path(target_folder, "work")
             dir_with_sonar2_output = pathlib.Path(target_folder, "output")
 
             # check for existing target dirs and delete
-            if (dir_with_sonar2_output.is_dir() and dir_with_sonar2_output.exists()) or\
-                    (dir_with_sonar2_work.is_dir() and dir_with_sonar2_work.exists()):
-                    print("output and work folders are being deleted")
+            if dir_with_sonar2_output.is_dir() and dir_with_sonar2_output.exists():
+                    print("output folder is being deleted")
                     shutil.rmtree(dir_with_sonar2_output)
+
+            if dir_with_sonar2_work.is_dir() and dir_with_sonar2_work.exists():
+                    print("work folders are being deleted")
                     shutil.rmtree(dir_with_sonar2_work)
 
             # check for free disk space
@@ -1512,7 +1515,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             # copy data from sonar P1 output
             sonar1_cp_outfile, sonar1_cp_unique_id = sonar_p2_copy_files(chain_folder, scripts_folder,
                                                                          dir_with_sonar1_files, target_folder,
-                                                                         job_prefix, logfile)
+                                                                         job_prefix_id, logfile)
             # collect cp job details
             slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
 
@@ -1536,7 +1539,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
 
             sonar2_outfile, sonar2_unique_id = sonar_p2_call(chain_folder, run_sonar2_trunc, mab_name, mab[i],
                                                              scripts_folder, mab_seq_file, target_folder, project_dir,
-                                                             job_prefix, logfile)
+                                                             job_prefix_id, logfile)
 
             slurm_sonar2_submission_jobs.append([sonar2_outfile, sonar2_unique_id])
 
