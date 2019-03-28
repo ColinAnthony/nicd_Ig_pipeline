@@ -496,7 +496,7 @@ def check_slurm_jobs(job_name, job_list_to_check, sleep_time_sec, max_wait_time,
 
     waiting_time = 0
     # convert max wait from hours to seconds for comparison
-    max_wait_time_seconds = max_wait_time / (60 * 60)
+    max_wait_time_seconds = max_wait_time  * (60 * 60)
     while True:
         if not job_list_to_check:
             break
@@ -554,7 +554,7 @@ def raw_files_gz(chain_path, sample_name, dir_with_raw_files, scripts_folder, lo
         slurm_outfile = str(pathlib.Path(chain_path, "slurm0_gip_raw-%j.out"))
         with open(run_gzip, "w") as handle:
             handle.write("#!/bin/sh\n")
-            handle.write("#SBATCH --exclude=node1\n")
+            # handle.write("#SBATCH --exclude=node01\n")
             handle.write("#SBATCH --mem=1000\n\n")
             handle.write(f"#SBATCH -J {gzip_job_name}\n")
             handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
@@ -606,7 +606,7 @@ def run_pear(chain_path, sample_name, scripts_folder, file_r1, file_r2, merged_f
     slurm_outfile = str(pathlib.Path(chain_path, "slurm1_merge_fastq-%j.out"))
     with open(pear_script, "w") as handle:
         handle.write("#!/bin/sh\n")
-        handle.write("#SBATCH --exclude=node1\n")
+        # handle.write("#SBATCH --exclude=node01\n")
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
         handle.write(f"{pear}\n")
@@ -655,7 +655,7 @@ def fastq2fasta(chain_path, sample_name, scripts_folder, fasta, merged_outfile, 
     slurm_outfile = str(pathlib.Path(chain_path, "slurm2_fastq_convert-%j.out"))
     with open(run_fastq_fasta, "w") as handle:
         handle.write("#!/bin/sh\n")
-        handle.write("#SBATCH --exclude=node1\n")
+        # handle.write("#SBATCH --exclude=node01\n")
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
         handle.write(f"{convert_fastq}\n")
@@ -699,7 +699,7 @@ def merged_files_gz(chain_path, scripts_folder, merged_outfile, logfile):
     slurm_outfile = str(pathlib.Path(chain_path, "slurm3_gzip_merged-%j.out"))
     with open(run_gzip, "w") as handle:
         handle.write("#!/bin/sh\n")
-        handle.write("#SBATCH --exclude=node1\n")
+        # handle.write("#SBATCH --exclude=node01\n")
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -J {gzip_job_name}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
@@ -750,7 +750,7 @@ def concat_fasta(chain_path, sample_name, search_fasta_folder, scripts_folder, c
     slurm_outfile = str(pathlib.Path(chain_path, "slurm5_concat-%j.out"))
     with open(run_cat, "w") as handle:
         handle.write("#!/bin/sh\n")
-        handle.write("#SBATCH --exclude=node1\n")
+        # handle.write("#SBATCH --exclude=node01\n")
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -J {cat_job_name}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
@@ -804,7 +804,7 @@ def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta
     slurm_outfile = str(pathlib.Path(chain_path, "slurm4_derep-%j.out"))
     with open(run_derep, "w") as handle:
         handle.write("#!/bin/sh\n")
-        handle.write("#SBATCH --exclude=node1\n")
+        # handle.write("#SBATCH --exclude=node01\n")
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -J {derep_job_name}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
@@ -868,7 +868,7 @@ def sonar_p1_call(chain_path, project_folder, scripts_folder, sonar_version, dir
     slurm_outfile = str(pathlib.Path(chain_path, "slurm6_sonar_P1-%j.out"))
     with open(run_sonar_p1, "w") as handle:
         handle.write("#!/bin/sh\n")
-        handle.write("#SBATCH -w, --nodelist=bio-linux\n")
+        handle.write("#SBATCH --nodelist=bio-linux\n")
         handle.write("#SBATCH --mem=4000\n")
         handle.write(f"#SBATCH -J {sonar1_job_name}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
@@ -919,7 +919,7 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_files, targe
 
     with open(run_snr1cp, "w") as handle:
         handle.write("#!/bin/sh\n")
-        handle.write("#SBATCH --exclude=node1\n")
+        # handle.write("#SBATCH --exclude=node01\n")
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -J {sonar_p1_cp}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
@@ -977,7 +977,7 @@ def sonar_p2_call(chain_folder, run_sonar2_trunc, known_mab_name, mab, scripts_f
 
         with open(sonar_p2_run, 'w') as handle:
             handle.write("#!/bin/sh\n")
-            handle.write("#SBATCH -w, --nodelist=bio-linux\n")
+            handle.write("#SBATCH --nodelist=bio-linux\n")
             handle.write("#SBATCH --mem=4000\n")
             handle.write(f"#SBATCH -J {sonar2_job_name}\n")
             handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
