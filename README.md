@@ -20,7 +20,7 @@ This script requires a strict naming format:
     do not include "-" in your file name. 
     These will be converted to "_" and may cause the sctipts to break
     
-      eg: CAP255_4180_80wpi_heavy_C5
+      eg: CAP255_4180_080wpi_heavy_C5
       Where study = CAP
       PID = 255 (Zero padded to three digits - ie: 008 not 8)
       visit = 4180

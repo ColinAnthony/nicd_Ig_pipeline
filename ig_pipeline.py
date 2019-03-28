@@ -189,7 +189,7 @@ def settings_checker(settings_dataframe, logfile):
         if len(parts) != 5:
             with open(logfile, "a") as handle:
                 handle.write(f"# Sample name was not correctly formatted: {sample_id}\n"
-                             f"# expected eg: CAP255_4180_80wpi_heavy_C5\nUse '_' as the field delimeter\n")
+                             f"# expected eg: CAP255_4180_080wpi_heavy_C5\nUse '_' as the field delimeter\n")
 
             sys.exit("exiting")
         elif parts[0][:3].upper() == "CAP" and len(parts[0]) != 6:
@@ -197,20 +197,20 @@ def settings_checker(settings_dataframe, logfile):
                 handle.write(f"# Sample name was not correctly formatted: {sample_id}\n"
                              f"# expected the name to start with CAP\n"
                              f"# The PID must be zero padded: eg: CAP008, not CAP8\n"
-                             f"# eg: CAP255_4180_80wpi_heavy_C5\n")
+                             f"# eg: CAP255_4180_080wpi_heavy_C5\n")
             sys.exit("exiting")
         elif parts[0][:3].upper() == "CAP" and len(parts[1]) != 4:
             with open(logfile, "a") as handle:
                 handle.write(f"# Sample name was not correctly formatted: {sample_id}\n"
                              f"# your sample name was {sample_id}\n"
                              f"#The visit code must be in the 2000 format, not P2V0\n"
-                             f"# expected eg: CAP255_4180_80wpi_heavy_C5\n")
+                             f"# expected eg: CAP255_4180_080wpi_heavy_C5\n")
             sys.exit("exiting")
         elif parts[0][:3].upper() == "CAP" and len(parts[2]) != 6 and parts[2][-3:].lower() != "wpi":
             with open(logfile, "a") as handle:
                 handle.write(f"# Sample name was not correctly formatted: {sample_id}\n"
                              f"# The wpi code must be zero padded and end in wpi eg: 080wpi"
-                             f"# expected eg: CAP255_4180_80wpi_heavy_C5")
+                             f"# expected eg: CAP255_4180_080wpi_heavy_C5")
             sys.exit("exiting")
 
         chain = job_settings["sonar_1_version"].lower()
