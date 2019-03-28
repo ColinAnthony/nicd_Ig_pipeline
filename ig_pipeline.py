@@ -548,7 +548,7 @@ def raw_files_gz(chain_path, sample_name, dir_with_raw_files, scripts_folder, lo
         # set job id
         gz_unique_id = uuid.uuid4()
         unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
-        gzip_job_name = f'gzRaw_{unique_suffix}'
+        gzip_job_name = f'gz{unique_suffix}raw'
         run_gzip = pathlib.Path(scripts_folder, "run_gzip_raw.sh")
         cmd_gz = f"gzip {dir_with_raw_files}/*.fastq"
         slurm_outfile = str(pathlib.Path(chain_path, "slurm0_gip_raw-%j.out"))
@@ -598,7 +598,8 @@ def run_pear(chain_path, sample_name, scripts_folder, file_r1, file_r2, merged_f
     chain = sample_name.split("_")[3][0].upper()
     # set job id
     pear_unique_id = uuid.uuid4()
-    pear_job_name = f"{time_point}{chain}Pear"
+    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+    pear_job_name = f"{chain}{time_point}{unique_suffix}mg"
     pear_script = pathlib.Path(scripts_folder, f"run_pear{str(itern)}.sh")
     pear = f"/opt/conda2/pkgs/pear-0.9.6-2/bin/pear  -f {file_r1} -r {file_r2} -o {merged_file_name} " \
         f"-p 0.001 -n 300\n"
@@ -645,7 +646,8 @@ def fastq2fasta(chain_path, sample_name, scripts_folder, fasta, merged_outfile, 
     # id_prefix = sample_name[3:6]
     time_point = sample_name.split("_")[2][:-3]
     chain = sample_name.split("_")[3][0].upper()
-    fastq_fasta_job_name = f"{time_point}{chain}cvrt"
+    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+    fastq_fasta_job_name = f"{chain}{time_point}{unique_suffix}cv"
 
     run_fastq_fasta = pathlib.Path(scripts_folder, f"run_convert_to_fasta{str(itern)}.sh")
     convert_fastq = f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --fastq_filter {merged_outfile} " \
@@ -691,7 +693,7 @@ def merged_files_gz(chain_path, scripts_folder, merged_outfile, logfile):
     print(merged_outfile)
     unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
     gz_unique_id = uuid.uuid4()
-    gzip_job_name = f'gzMerg{unique_suffix}'
+    gzip_job_name = f'gz{unique_suffix}mg'
     run_gzip = pathlib.Path(scripts_folder, "run_gzip_merged.sh")
     cmd_gzip = f"gzip {merged_outfile}"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm3_gzip_merged-%j.out"))
@@ -739,10 +741,10 @@ def concat_fasta(chain_path, sample_name, search_fasta_folder, scripts_folder, c
         cat_str += f"{str(file)} "
     # set job id
     cat_unique_id = uuid.uuid4()
-    # id_prefix = sample_name[3:6]
+    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
     time_point = sample_name.split("_")[2][:-3]
     chain = sample_name.split("_")[3][0].upper()
-    cat_job_name = f'{time_point}{chain}cat'
+    cat_job_name = f'{chain}{time_point}{unique_suffix}ct'
     run_cat = pathlib.Path(scripts_folder, "run_cat.sh")
     concat_cmd = f"{cat_str} >> {concated_outfile}"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm5_concat-%j.out"))
@@ -788,10 +790,10 @@ def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta
     """
     # set job id
     derep_unique_id = uuid.uuid4()
-    # id_prefix = sample_name[3:6]
+    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
     time_point = name_stem.split("_")[2][:-3]
     chain = name_stem.split("_")[3][0].upper()
-    derep_job_name = f"{time_point}{chain}Derp"
+    derep_job_name = f"{chain}{time_point}{unique_suffix}de"
 
     # set dereplicated outfile name
     dereplicated_file = pathlib.Path(derep_folder, f"{fasta_to_derep_name_stem}_unique.fasta")
@@ -973,8 +975,6 @@ def sonar_p2_call(chain_folder, run_sonar2_trunc, known_mab_name, mab, scripts_f
         sonar2_cmd = f"/usr/bin/perl /opt/conda2/pkgs/sonar/lineage/2.1-calculate_id-div.pl -a {mab_name_file} " \
                      f"-g /opt/conda2/pkgs/sonar/germDB/IgHKLV_cysTruncated.fa -ap muscle"
 
-        print(sonar2_cmd)
-        input("enter")
         with open(sonar_p2_run, 'w') as handle:
             handle.write("#!/bin/sh\n")
             handle.write("#SBATCH -w, --nodelist=bio-linux\n")
