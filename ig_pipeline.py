@@ -496,7 +496,7 @@ def check_slurm_jobs(job_name, job_list_to_check, sleep_time_sec, max_wait_time,
 
     waiting_time = 0
     # convert max wait from hours to seconds for comparison
-    max_wait_time_seconds = max_wait_time  * (60 * 60)
+    max_wait_time_seconds = max_wait_time * (60 * 60)
     while True:
         if not job_list_to_check:
             break
@@ -914,7 +914,9 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_files, targe
     sonar_p1_cp = f"{job_prefix}c"
     run_snr1cp = pathlib.Path(scripts_folder, "run_sonar1_cp.sh")
     # copy files to desired directory
-    cmd_copy_sonar1 = f"cp -r {dir_with_sonar1_files}/* {target_folder}"
+    cmd_copy_sonar1 = f"cp -r {dir_with_sonar1_files} {target_folder}"
+    print(cmd_copy_sonar1)
+    input("enter")
     slurm_outfile = str(pathlib.Path(chain_path, "slurm7_sonar_P2_copy-%j.out"))
 
     with open(run_snr1cp, "w") as handle:
@@ -1474,7 +1476,9 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                 print("output folder is being deleted")
                 shutil.rmtree(flder_branch)
 
-        for file in pathlib.Path(dir_with_sonar1_files).glob("*_unique.fasta"):
+        for file in pathlib.Path(chain_folder, f"5_{known_mab_name}", "cdr3").glob("*_unique.fasta"):
+            os.unlink(str(file))
+        for file in pathlib.Path(chain_folder, f"5_{known_mab_name}", "fullmab").glob("*_unique.fasta"):
             os.unlink(str(file))
 
     # copy the data and run sonar P2
@@ -1550,8 +1554,10 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                 sys.exit("exiting")
 
             # copy data from sonar P1 output
+            dir_with_sonar1_files_cp = str(dir_with_sonar1_files) + "/*"
+
             sonar1_cp_outfile, sonar1_cp_unique_id = sonar_p2_copy_files(chain_folder, scripts_folder,
-                                                                         dir_with_sonar1_files, target_folder,
+                                                                         dir_with_sonar1_files_cp, target_folder,
                                                                          job_prefix_id, logfile)
             # collect cp job details
             slurm_cp_submission_jobs.append([sonar1_cp_outfile, sonar1_cp_unique_id])
