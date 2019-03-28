@@ -1039,8 +1039,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     for item in command_call_processing:
         sample_name = item[0]
         dir_with_raw_files = item[1]
-        chain = item[2]
-        time_point = item[3]
         chain_path = dir_with_raw_files.parent
         script_folder = pathlib.Path(chain_path, "scripts")
         search_raw_files = pathlib.Path(dir_with_raw_files, f"{sample_name}_R1.fastq.gz")
@@ -1051,7 +1049,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
         search_raw_files_fastq = list(dir_with_raw_files.glob("*.fastq"))
         if search_raw_files_fastq:
             with open(logfile, "a") as handle:
-                handle.write(f"# unzipped files sound\n# gziping the files\n")
+                handle.write(f"# unzipped files sound\n# gzipping the files\n")
             gz_slurm_out_file, gz_unique_id = raw_files_gz(chain_path, sample_name, dir_with_raw_files,
                                                            script_folder, logfile)
             check_gz_raw_jobs.append([gz_slurm_out_file, gz_unique_id])
