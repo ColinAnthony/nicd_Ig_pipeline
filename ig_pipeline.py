@@ -915,8 +915,6 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_files, targe
     run_snr1cp = pathlib.Path(scripts_folder, "run_sonar1_cp.sh")
     # copy files to desired directory
     cmd_copy_sonar1 = f"cp -r {dir_with_sonar1_files} {target_folder}"
-    print(cmd_copy_sonar1)
-    input("enter")
     slurm_outfile = str(pathlib.Path(chain_path, "slurm7_sonar_P2_copy-%j.out"))
 
     with open(run_snr1cp, "w") as handle:
@@ -1476,10 +1474,15 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
                 print("output folder is being deleted")
                 shutil.rmtree(flder_branch)
 
-        for file in pathlib.Path(chain_folder, f"5_{known_mab_name}", "cdr3").glob("*_unique.fasta"):
-            os.unlink(str(file))
-        for file in pathlib.Path(chain_folder, f"5_{known_mab_name}", "fullmab").glob("*_unique.fasta"):
-            os.unlink(str(file))
+        existing_crd3_fasta = list(pathlib.Path(chain_folder, f"5_{known_mab_name}", "cdr3").glob("*_unique.fasta"))
+        if existing_crd3_fasta:
+            for file in existing_crd3_fasta:
+                os.unlink(str(file))
+
+        existing_full_fasta = list(pathlib.Path(chain_folder, f"5_{known_mab_name}", "fullmab").glob("*_unique.fasta"))
+        if existing_full_fasta:
+            for file in existing_full_fasta:
+                os.unlink(str(file))
 
     # copy the data and run sonar P2
     slurm_sonar2_submission_jobs = []
