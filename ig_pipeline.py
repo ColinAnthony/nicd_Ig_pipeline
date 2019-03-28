@@ -430,7 +430,7 @@ def make_job_lists(path, list_all_jobs_to_run, logfile):
             for i, step in enumerate(run_steps):
                 if step == 1:
                     if i == 0:
-                        command_call_processing.append([sample_name, dir_with_raw_files])
+                        command_call_processing.append([sample_name, dir_with_raw_files, chain, time_point])
                         search_raw_path = list(dir_with_raw_files.glob("*.fastq*"))
                         if search_raw_path:
                             n += 1
@@ -1039,6 +1039,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     for item in command_call_processing:
         sample_name = item[0]
         dir_with_raw_files = item[1]
+        chain = item[2]
+        time_point = item[3]
         chain_path = dir_with_raw_files.parent
         script_folder = pathlib.Path(chain_path, "scripts")
         search_raw_files = pathlib.Path(dir_with_raw_files, f"{sample_name}_R1.fastq.gz")
@@ -1074,11 +1076,16 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             handle.write(f"\n# Processing {sample_name}\n")
         print(f"\n# Processing {sample_name}\n")
         dir_with_raw_files = item[1]
+        pid = sample_name.split("_")[0]
+        chain = item[2]
+        time_point = item[3]
+        derep_folder_name = f"{pid}_{time_point}_{chain}"
+
         chain_path = dir_with_raw_files.parent
         script_folder = pathlib.Path(chain_path, "scripts")
         merged_folder = pathlib.Path(chain_path, "2_merged_filtered")
         fasta_folder = pathlib.Path(chain_path, "3_fasta")
-        derep_folder = pathlib.Path(chain_path, "4_dereplicated")
+        derep_folder = pathlib.Path(chain_path, f"4_{derep_folder_name}")
 
         # remove old merged files if present
         merged_search = list(merged_folder.glob(f"{sample_name}*.fastq*"))
@@ -1239,12 +1246,17 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     check_slurm_jobs("gzip_merged", check_gz_merged_jobs, sleep_time_sec, max_wait_time, logfile)
 
     # collect all the files that will be dereplicated
-    files_to_derep_dict = collections.defaultdict(list)
+    files_to_derep_dict = collections.defaultdict(str)
     for item in command_call_processing:
         sample_name = item[0]
         dir_with_raw_files = item[1]
+        chain = item[2]
+        time_point = item[3]
+        pid = sample_name.split("_")[0]
+        derep_folder_name = f"{pid}_{time_point}_{chain}"
         chain_path = dir_with_raw_files.parent
-        files_to_derep_dict[str(chain_path)].append(sample_name)
+        # if mult entries for a given cahin path, they will have the same derep folder, so safe to overwrite
+        files_to_derep_dict[str(chain_path)] = derep_folder_name
 
     # concat (if needed) and dereplicate fasta files
     print("running dereplication (and concatenation if needed)")
@@ -1253,11 +1265,11 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     concat_files = []
     check_derep_jobs = []
     dereplicatd_files = []
-    for chain_folder, sample_name_list in files_to_derep_dict.items():
+    for chain_folder, derep_folder_name in files_to_derep_dict.items():
         check_concat_jobs = []
         scripts_folder = pathlib.Path(chain_folder, "scripts")
         fasta_folder = pathlib.Path(chain_folder, "3_fasta")
-        derep_folder = pathlib.Path(chain_folder, "4_dereplicated")
+        derep_folder = pathlib.Path(chain_folder, f"4_{derep_folder_name}")
         search_fasta_folder = list(pathlib.Path(fasta_folder).glob("*.fasta"))
         primers = []
         name_stem = ''
@@ -1299,9 +1311,9 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             # copy fasta to 4_dereplicated
             file_to_dereplicate = search_fasta_folder[0]
         else:
-            print(f"no Fasta files were found\nskipping this sample: {sample_name_list}")
+            print(f"no Fasta files were found\nskipping this sample")
             with open(logfile, "a") as handle:
-                handle.write(f"# no Fasta files were found\nskipping this sample: {sample_name_list}")
+                handle.write(f"# no Fasta files were found\nskipping this sample")
             continue
 
         # dereplicate sequences using vsearch
