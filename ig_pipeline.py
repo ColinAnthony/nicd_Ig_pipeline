@@ -1039,9 +1039,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     gb = (1024 * 1024) * 1024
     sleep_time_sec = 60 * 1 * 1
 
-    print(command_call_processing)
-    input("enter")
-
     # check that raw files are gzipped
     check_gz_raw_jobs = []
     with open(logfile, "a") as handle:
@@ -1252,8 +1249,6 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     with open(logfile, "a") as handle:
         handle.write(f"# waiting for gzip on merged files\n")
     max_wait_time = 6
-    print(check_gz_merged_jobs)
-    input("therdf")
     check_slurm_jobs("gzip_merged", check_gz_merged_jobs, sleep_time_sec, max_wait_time, logfile)
 
     # collect all the files that will be dereplicated
