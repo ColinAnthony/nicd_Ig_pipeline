@@ -114,7 +114,7 @@ include an entry for each mAb, as shown in the settings template
     
 * To re-attach to the screen session
     
-    type: ` screen -S <job_name>`   
+    type: ` screen -r <screen_session_name>`   
 #
  * check the log file in the project folder to see details of the processes that were run
  * check your output files
