@@ -555,7 +555,7 @@ def raw_files_gz(chain_path, sample_name, dir_with_raw_files, scripts_folder, lo
         with open(run_gzip, "w") as handle:
             handle.write("#!/bin/sh\n")
             # handle.write("#SBATCH --exclude=node01\n")
-            handle.write("#SBATCH --mem=1000\n\n")
+            handle.write("#SBATCH --mem=2000\n\n")
             handle.write(f"#SBATCH -J {gzip_job_name}\n")
             handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
             handle.write(f"echo {gz_unique_id}\n")
@@ -608,7 +608,7 @@ def run_pear(chain_path, sample_name, scripts_folder, file_r1, file_r2, merged_f
     with open(pear_script, "w") as handle:
         handle.write("#!/bin/sh\n")
         # handle.write("#SBATCH --exclude=node01\n")
-        handle.write("#SBATCH --mem=1000\n")
+        handle.write("#SBATCH --mem=4000\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
         handle.write(f"echo {pear}\n")
         handle.write(f"{pear}\n")
@@ -658,7 +658,7 @@ def fastq2fasta(chain_path, sample_name, scripts_folder, fasta, merged_outfile, 
     with open(run_fastq_fasta, "w") as handle:
         handle.write("#!/bin/sh\n")
         # handle.write("#SBATCH --exclude=node01\n")
-        handle.write("#SBATCH --mem=1000\n")
+        handle.write("#SBATCH --mem=4000\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
         handle.write(f"echo {convert_fastq}\n")
         handle.write(f"{convert_fastq}\n")
@@ -703,7 +703,7 @@ def merged_files_gz(chain_path, scripts_folder, merged_outfile, logfile):
     with open(run_gzip, "w") as handle:
         handle.write("#!/bin/sh\n")
         # handle.write("#SBATCH --exclude=node01\n")
-        handle.write("#SBATCH --mem=1000\n")
+        handle.write("#SBATCH --mem=4000\n")
         handle.write(f"#SBATCH -J {gzip_job_name}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
         handle.write(f"echo {cmd_gzip}\n")
@@ -755,7 +755,7 @@ def concat_fasta(chain_path, sample_name, search_fasta_folder, scripts_folder, c
     with open(run_cat, "w") as handle:
         handle.write("#!/bin/sh\n")
         # handle.write("#SBATCH --exclude=node01\n")
-        handle.write("#SBATCH --mem=1000\n")
+        handle.write("#SBATCH --mem=2000\n")
         handle.write(f"#SBATCH -J {cat_job_name}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
         handle.write(f"echo {concat_cmd}\n")
