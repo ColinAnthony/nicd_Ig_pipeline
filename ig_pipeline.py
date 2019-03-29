@@ -1392,10 +1392,10 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             handle.write(f"\n{'-'*10}\n# running Sonar P1 on {sample_name}\n")
 
         # check whether there is already sonar P1 output in the target folders (if this is a rerun)+
-        if dir_with_sonar1_output.is_dir() and dir_with_sonar1_output.exists():
+        if dir_with_sonar1_output.is_dir():
             print("output folder being deleted")
             shutil.rmtree(dir_with_sonar1_output)
-        if dir_with_sonar1_work.is_dir() and dir_with_sonar1_work.exists():
+        if dir_with_sonar1_work.is_dir():
             print("work folder being deleted")
             shutil.rmtree(dir_with_sonar1_work)
 
