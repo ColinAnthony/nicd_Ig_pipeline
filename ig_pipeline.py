@@ -547,7 +547,7 @@ def raw_files_gz(chain_path, sample_name, dir_with_raw_files, scripts_folder, lo
             handle.write(f"# unzipped raw fastq file found in 1_raw_data for {sample_name}\n# zipping files")
         # set job id
         gz_unique_id = uuid.uuid4()
-        unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+        unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2))
         gzip_job_name = f'gz{unique_suffix}raw'
         run_gzip = pathlib.Path(scripts_folder, "run_gzip_raw.sh")
         cmd_gz = f"gzip {dir_with_raw_files}/*.fastq"
@@ -558,7 +558,8 @@ def raw_files_gz(chain_path, sample_name, dir_with_raw_files, scripts_folder, lo
             handle.write("#SBATCH --mem=1000\n\n")
             handle.write(f"#SBATCH -J {gzip_job_name}\n")
             handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
-            handle.write(f"{cmd_gz}\n")
+            handle.write(f"echo {gz_unique_id}\n")
+            handle.write(f"echo {cmd_gz}\n")
             handle.write(f"echo {gz_unique_id}")
         os.chmod(str(run_gzip), 0o777)
 
@@ -598,7 +599,7 @@ def run_pear(chain_path, sample_name, scripts_folder, file_r1, file_r2, merged_f
     chain = sample_name.split("_")[3][0].upper()
     # set job id
     pear_unique_id = uuid.uuid4()
-    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2))
     pear_job_name = f"{chain}{time_point}{unique_suffix}mg"
     pear_script = pathlib.Path(scripts_folder, f"run_pear{str(itern)}.sh")
     pear = f"/opt/conda2/pkgs/pear-0.9.6-2/bin/pear  -f {file_r1} -r {file_r2} -o {merged_file_name} " \
@@ -609,6 +610,7 @@ def run_pear(chain_path, sample_name, scripts_folder, file_r1, file_r2, merged_f
         # handle.write("#SBATCH --exclude=node01\n")
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
+        handle.write(f"echo {pear}\n")
         handle.write(f"{pear}\n")
         handle.write(f"echo {pear_unique_id}")
     os.chmod(str(pear_script), 0o777)
@@ -646,7 +648,7 @@ def fastq2fasta(chain_path, sample_name, scripts_folder, fasta, merged_outfile, 
     # id_prefix = sample_name[3:6]
     time_point = sample_name.split("_")[2][:-3]
     chain = sample_name.split("_")[3][0].upper()
-    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2))
     fastq_fasta_job_name = f"{chain}{time_point}{unique_suffix}cv"
 
     run_fastq_fasta = pathlib.Path(scripts_folder, f"run_convert_to_fasta{str(itern)}.sh")
@@ -658,6 +660,7 @@ def fastq2fasta(chain_path, sample_name, scripts_folder, fasta, merged_outfile, 
         # handle.write("#SBATCH --exclude=node01\n")
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
+        handle.write(f"echo {convert_fastq}\n")
         handle.write(f"{convert_fastq}\n")
         handle.write(f"echo {convert_unique_id}")
     os.chmod(str(run_fastq_fasta), 0o777)
@@ -691,7 +694,7 @@ def merged_files_gz(chain_path, scripts_folder, merged_outfile, logfile):
     """
     # set job id
     print(merged_outfile)
-    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2))
     gz_unique_id = uuid.uuid4()
     gzip_job_name = f'gz{unique_suffix}mg'
     run_gzip = pathlib.Path(scripts_folder, "run_gzip_merged.sh")
@@ -703,6 +706,7 @@ def merged_files_gz(chain_path, scripts_folder, merged_outfile, logfile):
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -J {gzip_job_name}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
+        handle.write(f"echo {cmd_gzip}\n")
         handle.write(f"{cmd_gzip}\n")
         handle.write(f"echo {gz_unique_id}")
     os.chmod(str(run_gzip), 0o777)
@@ -741,7 +745,7 @@ def concat_fasta(chain_path, sample_name, search_fasta_folder, scripts_folder, c
         cat_str += f"{str(file)} "
     # set job id
     cat_unique_id = uuid.uuid4()
-    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2))
     time_point = sample_name.split("_")[2][:-3]
     chain = sample_name.split("_")[3][0].upper()
     cat_job_name = f'{chain}{time_point}{unique_suffix}ct'
@@ -754,6 +758,7 @@ def concat_fasta(chain_path, sample_name, search_fasta_folder, scripts_folder, c
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -J {cat_job_name}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
+        handle.write(f"echo {concat_cmd}\n")
         handle.write(f"{concat_cmd}\n")
         handle.write(f"echo {cat_unique_id}")
     os.chmod(str(run_cat), 0o777)
@@ -790,7 +795,7 @@ def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta
     """
     # set job id
     derep_unique_id = uuid.uuid4()
-    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2)).lower()
+    unique_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2))
     time_point = name_stem.split("_")[2][:-3]
     chain = name_stem.split("_")[3][0].upper()
     derep_job_name = f"{chain}{time_point}{unique_suffix}de"
@@ -800,14 +805,15 @@ def dereplicate_fasta(chain_path, scripts_folder, name_stem, derep_folder, fasta
     # create fastq to fasta SLURM file
     run_derep = pathlib.Path(scripts_folder, "run_derep.sh")
     derep_cmd = f"/opt/conda2/pkgs/vsearch-2.4.3-0/bin/vsearch --sizeout --derep_fulllength {file_to_dereplicate}" \
-        f" --output {dereplicated_file} --fasta_width 0 --notrunclabels --threads 4"
+        f" --output {dereplicated_file} --fasta_width 0 --notrunclabels"
     slurm_outfile = str(pathlib.Path(chain_path, "slurm4_derep-%j.out"))
     with open(run_derep, "w") as handle:
         handle.write("#!/bin/sh\n")
         # handle.write("#SBATCH --exclude=node01\n")
-        handle.write("#SBATCH --mem=1000\n")
+        handle.write("#SBATCH --mem=4000\n")
         handle.write(f"#SBATCH -J {derep_job_name}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
+        handle.write(f"echo {derep_cmd}\n")
         handle.write(f"{derep_cmd}\n")
         handle.write(f"echo {derep_unique_id}")
     os.chmod(str(run_derep), 0o777)
@@ -863,7 +869,7 @@ def sonar_p1_call(chain_path, project_folder, scripts_folder, sonar_version, dir
                                 f"-locus L -fasta {str(uniques_fasta)} -callJ -jArgs "
                                 f"'-lib /opt/conda2/pkgs/sonar/germDB/IgLJ.fa -noD -noC -callFinal' -f"}
 
-    sonar_version_setting = sonar_settings[sonar_version]
+    sonar_version_run_setting = sonar_settings[sonar_version]
     run_sonar_p1 = pathlib.Path(scripts_folder, f"run_sonar_P1_{sonar_version}.sh")
     slurm_outfile = str(pathlib.Path(chain_path, "slurm6_sonar_P1-%j.out"))
     with open(run_sonar_p1, "w") as handle:
@@ -872,12 +878,13 @@ def sonar_p1_call(chain_path, project_folder, scripts_folder, sonar_version, dir
         handle.write("#SBATCH --mem=4000\n")
         handle.write(f"#SBATCH -J {sonar1_job_name}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
-        handle.write(f"{sonar_version_setting}\n")
+        handle.write(f"echo {sonar_version_run_setting}\n")
+        handle.write(f"{sonar_version_run_setting}\n")
         handle.write(f"echo {sonar_p1_unique_id}\n")
     os.chmod(str(run_sonar_p1), 0o777)
 
     with open(logfile, "a") as handle:
-        handle.write(f"# running Sonar P1 command from file:\n{str(sonar_version_setting)}\n")
+        handle.write(f"# running Sonar P1 command from file:\n{str(sonar_version_run_setting)}\n")
     sonar1_run_cmd = f"sbatch -J {sonar1_job_name} {run_sonar_p1} --parsable"
     try:
         # change into sonar P1 targer directory
@@ -923,8 +930,8 @@ def sonar_p2_copy_files(chain_path, scripts_folder, dir_with_sonar1_files, targe
         handle.write("#SBATCH --mem=1000\n")
         handle.write(f"#SBATCH -J {sonar_p1_cp}\n")
         handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
-        handle.write(f"{cmd_copy_sonar1}\n")
         handle.write(f"echo {cmd_copy_sonar1}\n")
+        handle.write(f"{cmd_copy_sonar1}\n")
         handle.write(f"echo {sonar1_cp_unique_id}")
     os.chmod(str(run_snr1cp), 0o777)
 
@@ -981,8 +988,8 @@ def sonar_p2_call(chain_folder, run_sonar2_trunc, known_mab_name, mab, scripts_f
             handle.write("#SBATCH --mem=4000\n")
             handle.write(f"#SBATCH -J {sonar2_job_name}\n")
             handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
-            handle.write(f"{sonar2_cmd}\n")
             handle.write(f"echo {sonar2_cmd}\n")
+            handle.write(f"{sonar2_cmd}\n")
             handle.write(f"echo {sonar2_unique_id}\n")
     else:
         sonar_p2_run = f"{known_mab_name}_{mab}_sonar_p2_run.sh"
@@ -995,8 +1002,8 @@ def sonar_p2_call(chain_folder, run_sonar2_trunc, known_mab_name, mab, scripts_f
             handle.write("#SBATCH --mem=4000\n\n")
             handle.write(f"#SBATCH -J {sonar2_job_name}\n")
             handle.write(f"#SBATCH -o {slurm_outfile}\n\n")
-            handle.write(f"{str(sonar2_cmd)}\n")
             handle.write(f"echo {sonar2_cmd}\n")
+            handle.write(f"{str(sonar2_cmd)}\n")
             handle.write(f"echo {sonar2_unique_id}\n")
     os.chmod(str(sonar_p2_run), 0o777)
 
@@ -1031,6 +1038,9 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     # Bites to Gb adjustment
     gb = (1024 * 1024) * 1024
     sleep_time_sec = 60 * 1 * 1
+
+    print(command_call_processing)
+    input("enter")
 
     # check that raw files are gzipped
     check_gz_raw_jobs = []
@@ -1198,7 +1208,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             check_convert_jobs.append([fastq_fasta_slurm_out_file, convert_unique_id])
             fasta_file_list.append(fasta)
 
-    # check for completion of pear submissions
+    # check for completion of fastq to fasta submissions
     print("waiting for fastq to fasta conversion")
     with open(logfile, "a") as handle:
         handle.write(f"# waiting for fastq to fasta conversion\n")
@@ -1210,7 +1220,8 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     with open(logfile, "a") as handle:
         handle.write(f"\n# {'-' * 10}\n# running gzip on merged files\n\n")
     check_gz_merged_jobs = []
-    for j, item in enumerate(command_call_processing):
+    for item in command_call_processing:
+        print(item)
         sample_name = item[0]
         print(f"# Processing {sample_name}")
         with open(logfile, "a") as handle:
@@ -1236,11 +1247,13 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
             # collect submission
             check_gz_merged_jobs.append([gz_merged_slurm_out_file, gz_unique_id])
 
-    # check for completion of pear submissions
+    # check for completion of gzip on merged submissions
     print("waiting for gzip on merged files")
     with open(logfile, "a") as handle:
         handle.write(f"# waiting for gzip on merged files\n")
     max_wait_time = 6
+    print(check_gz_merged_jobs)
+    input("therdf")
     check_slurm_jobs("gzip_merged", check_gz_merged_jobs, sleep_time_sec, max_wait_time, logfile)
 
     # collect all the files that will be dereplicated
