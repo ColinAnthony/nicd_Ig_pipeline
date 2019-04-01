@@ -29,6 +29,7 @@ import filecmp
 import struct
 import time
 import uuid
+from math import ceil
 # external libraries
 from docopt import docopt
 import pandas as pd
@@ -1063,7 +1064,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
 
     # check for completion of gzip submissions
     if check_gz_raw_jobs:
-        max_wait_time = 4
+        max_wait_time = 2 * (ceil(len(check_gz_raw_jobs) / 3))
         print("waiting for gzip on raw files")
         with open(logfile, "a") as handle:
             handle.write(f"# waiting for gzip on raw files\n")
@@ -1158,7 +1159,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     with open(logfile, "a") as handle:
         handle.write(f"# waiting for pear merging of reads to complete\n")
     pear_sleep = sleep_time_sec
-    max_wait_time = 12
+    max_wait_time = 4 * (ceil(len(check_pear_jobs) / 3))
     check_slurm_jobs("pear_merge", check_pear_jobs, pear_sleep, max_wait_time, logfile)
 
     # remove unmerged files
@@ -1209,7 +1210,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     print("waiting for fastq to fasta conversion")
     with open(logfile, "a") as handle:
         handle.write(f"# waiting for fastq to fasta conversion\n")
-    max_wait_time = 6
+    max_wait_time = 2 * (ceil(len(check_convert_jobs) / 3))
     check_slurm_jobs("fastq2fasta", check_convert_jobs, sleep_time_sec, max_wait_time, logfile)
 
     # gzip the merged files
@@ -1248,7 +1249,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     print("waiting for gzip on merged files")
     with open(logfile, "a") as handle:
         handle.write(f"# waiting for gzip on merged files\n")
-    max_wait_time = 6
+    max_wait_time = 2 * (ceil(len(check_gz_merged_jobs) / 3))
     check_slurm_jobs("gzip_merged", check_gz_merged_jobs, sleep_time_sec, max_wait_time, logfile)
 
     # collect all the files that will be dereplicated
@@ -1338,7 +1339,7 @@ def step_1_run_sample_processing(path, command_call_processing, logfile):
     print("waiting for dereplication on files")
     with open(logfile, "a") as handle:
         handle.write(f"# waiting for dereplication on files\n")
-    max_wait_time = 4
+    max_wait_time = 4 * (ceil(len(check_derep_jobs) / 3))
     check_slurm_jobs("derep_fasta", check_derep_jobs, sleep_time_sec, max_wait_time, logfile)
 
     # remove the concatenated files
@@ -1454,7 +1455,7 @@ def step_2_run_sonar_p1(command_call_sonar_1, logfile):
             slurm_submission_jobs.append([sonar_p1_slurm_out_file, sonar_p1_unique_id])
 
     # search for finished sonar P1 jobs and remove from list, Holds pipeline until Sonar P1 jobs are done
-    max_wait_time = 50 * len(slurm_submission_jobs) / 2
+    max_wait_time = 64 * (ceil(len(slurm_submission_jobs) / 3))
     check_slurm_jobs("sonar_P1", slurm_submission_jobs, sleep_time_sec, max_wait_time, logfile)
 
 
@@ -1609,7 +1610,7 @@ def step_3_run_sonar_2(command_call_sonar_2, fasta_sequences, run_sonar2_trunc, 
             slurm_sonar2_submission_jobs.append([sonar2_outfile, sonar2_unique_id])
 
     # search for finished sonar P2 jobs and remove from list, Holds pipeline until Sonar P2 jobs are done
-    max_wait_time = 12 * len(slurm_sonar2_submission_jobs)
+    max_wait_time = 12 * (ceil(len(slurm_sonar2_submission_jobs) / 3))
     check_slurm_jobs("sonar_P2", slurm_sonar2_submission_jobs, sleep_time_sec, max_wait_time, logfile)
 
 
